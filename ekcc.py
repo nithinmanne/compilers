@@ -1,5 +1,8 @@
-import sys, glob
+import sys, glob, json
 import ply.lex as lex
+import ply.yacc as yacc
+
+# Lexing Rules
 
 def find_column(input, token):
     line_start = input.rfind('\n', 0, token.lexpos) + 1
@@ -24,18 +27,18 @@ reserved = {
     'ref': 'TYPEREF'
 }
 
-
-tokens = [ 'NAME', 'SEMICOLON', 'EQUALS', 'COMMA',
+tokens = [ 'NAME', 'DOLLARNAME', 'SEMICOLON', 'EQUALS', 'COMMA',
            'LPAREN', 'RPAREN', 'LBRACE', 'RBRACE', 'LBRACK', 'RBRACK',
            'TIMES', 'DIVIDE', 'PLUS', 'MINUS', 'EQUAL', 'LESS', 'GREATER',
-           'BITAND', 'BITOR', 'BITNOT', 'DOLLAR',
-           'NUMBER', 'NUMBERINT', 'NUMBERFLOAT',
+           'BITAND', 'BITOR', 'BITNOT',
+           'NUMBER', 'NUMBERFLOAT',
            'STRING' ] + list(reserved.values())
 
-# Tokens
 
-t_ignore = ' \t'
+t_ignore = ' \t\r'
 t_ignore_COMMENT = r'\#.*'
+
+t_DOLLARNAME = r'\$[a-zA-Z_][a-zA-Z_0-9]*'
 
 t_SEMICOLON = r'\;'
 t_EQUALS = r'\='
@@ -56,9 +59,6 @@ t_GREATER = r'\>'
 t_BITAND = r'\&\&'
 t_BITOR = r'\|\|'
 t_BITNOT = r'\!'
-t_DOLLAR = r'\$'
-t_STRING = r'\"[^\"\n\r]*\"'
-
 
 
 def t_newline(t):
@@ -75,10 +75,14 @@ def t_NUMBER(t):
     r'[0-9]+(?:\.[0-9]+)?'
     if '.' not in t.value:
         t.value = int(t.value)
-        t.type = 'NUMBERINT'
     else:
         t.value = float(t.value)
         t.type = 'NUMBERFLOAT'
+    return t
+
+def t_STRING(t):
+    r'\"[^\"\n\r]*\"'
+    t.value = t.value[1:-1]
     return t
 
 
@@ -89,21 +93,326 @@ def t_error(t):
     t.lexer.skip(1)
 
 
-
-
 lexer = lex.lex()
+
+
+
+# Parsing rules
+precedence = (
+    ('nonassoc', 'IFX'),
+    ('nonassoc', 'ELSE'),
+    ('right', 'EQUALS'),
+    ('left', 'BITOR'),
+    ('left', 'BITAND'),
+    ('left', 'EQUAL'),
+    ('left', 'LESS', 'GREATER'),
+    ('left', 'PLUS', 'MINUS'),
+    ('left', 'TIMES', 'DIVIDE'),
+    ('right', 'UMINUS', 'BITNOT', 'TYPECAST'),
+    )
+
+binopmap = {
+    t_TIMES[1:]: 'mul',
+    t_DIVIDE[1:]: 'div',
+    t_PLUS[1:]: 'add',
+    t_MINUS[1:]: 'sub',
+    '==': 'eq', # t_EQUAL[1:]
+    t_LESS[1:]: 'lt',
+    t_GREATER[1:]: 'gt',
+    '&&': 'and', # t_BITAND[1:]
+    '||': 'or', # t_BITOR[1:]
+}
+uopmap = {
+    t_MINUS[1:]: 'minus',
+    t_BITNOT[1:]: 'not',
+}
+
+def p_prog(p):
+    '''prog : externs funcs
+            | funcs'''
+    p[0] = {}
+    p[0]['name'] = 'prog'
+    if len(p) == 3:
+        p[0]['funcs'] = p[2]
+        p[0]['externs'] = p[1]
+    else: p[0]['funcs'] = p[1]
+
+
+def p_externs(p):
+    '''externs : extern externs
+               | extern'''
+    if len(p) == 2:
+        p[0] = {}
+        p[0]['name'] = str(p.slice[0])
+        p[0][p[0]['name']] = [p[1]]
+    else:
+        p[0] = p[2]
+        p[0][p[0]['name']].insert(0, p[1])
+
+def p_extern(p):
+    '''extern : EXTERN type globid LPAREN tdecls RPAREN SEMICOLON
+              | EXTERN type globid LPAREN RPAREN SEMICOLON'''
+    p[0] = {}
+    p[0]['name'] = str(p.slice[0])
+    p[0]['ret_type'] = p[2]
+    p[0]['globid'] = p[3]
+    if len(p) == 8: p[0]['tdecls'] = p[5]
+
+
+def p_funcs(p):
+    '''funcs : func funcs
+             | func'''
+    if len(p) == 2:
+        p[0] = {}
+        p[0]['name'] = str(p.slice[0])
+        p[0][p[0]['name']] = [p[1]]
+    else:
+        p[0] = p[2]
+        p[0][p[0]['name']].insert(0, p[1])
+
+def p_func(p):
+    '''func : DEF type globid LPAREN vdecls RPAREN blk
+            | DEF type globid LPAREN RPAREN blk'''
+    p[0] = {}
+    p[0]['name'] = str(p.slice[0])
+    p[0]['ret_type'] = p[2]
+    p[0]['globid'] = p[3]
+    if len(p) == 8:
+        p[0]['blk'] = p[7]
+        p[0]['vdecls'] = p[5]
+    else:
+        p[0]['blk'] = p[6]
+
+def p_blk(p):
+    'blk : LBRACE stmts RBRACE'
+    p[0] = {}
+    p[0]['name'] = str(p.slice[0])
+    p[0]['contents'] = p[2]
+
+def p_stmts(p):
+    '''stmts : stmt stmts
+             | stmt'''
+    if len(p) == 2:
+        p[0] = {}
+        p[0]['name'] = str(p.slice[0])
+        p[0][p[0]['name']] = [p[1]]
+    else:
+        p[0] = p[2]
+        p[0][p[0]['name']].insert(0, p[1])
+
+def p_stmt_blk(p):
+    'stmt : blk'
+    p[0] = p[1]
+def p_stmt_ret(p):
+    '''stmt : RETURN exp SEMICOLON
+            | RETURN SEMICOLON'''
+    p[0] = {}
+    p[0]['name'] = 'ret'
+    if len(p) == 4: p[0]['exp'] = p[2]
+def p_stmt_vardeclstmt(p):
+    'stmt : vdecl EQUALS exp SEMICOLON'
+    p[0] = {}
+    p[0]['name'] = 'vardeclstmt'
+    p[0]['vdecl'] = p[1]
+    p[0]['exp'] = p[3]
+def p_stmt_expstmt(p):
+    'stmt : exp SEMICOLON'
+    p[0] = {}
+    p[0]['name'] = 'expstmt'
+    p[0]['exp'] = p[1]
+def p_stmt_while(p):
+    'stmt : WHILE LPAREN exp RPAREN stmt'
+    p[0] = {}
+    p[0]['name'] = 'while'
+    p[0]['cond'] = p[3]
+    p[0]['stmt'] = p[5]
+def p_stmt_if(p):
+    '''stmt : IF LPAREN exp RPAREN stmt ELSE stmt
+            | IF LPAREN exp RPAREN stmt %prec IFX'''
+    p[0] = {}
+    p[0]['name'] = 'if'
+    p[0]['cond'] = p[3]
+    p[0]['stmt'] = p[5]
+    if len(p) == 8: p[0]['else_stmt'] = p[7]
+def p_stmt_print(p):
+    'stmt : PRINT exp SEMICOLON'
+    p[0] = {}
+    p[0]['name'] = 'print'
+    p[0]['exp'] = p[2]
+def p_stmt_printslit(p):
+    'stmt : PRINT slit SEMICOLON'
+    p[0] = {}
+    p[0]['name'] = 'printslit'
+    p[0]['string'] = p[2]
+
+def p_exps(p):
+    '''exps : exp COMMA exps
+            | exp'''
+    if len(p) == 2:
+        p[0] = {}
+        p[0]['name'] = str(p.slice[0])
+        p[0][p[0]['name']] = [p[1]]
+    else:
+        p[0] = p[3]
+        p[0][p[0]['name']].insert(0, p[1])
+
+def p_exp_exp(p):
+    'exp : LPAREN exp RPAREN'
+    p[0] = p[2]
+def p_exp_funccall(p):
+    '''exp : globid LPAREN exps RPAREN
+           | globid LPAREN RPAREN'''
+    p[0] = {}
+    p[0]['name'] = 'funccall'
+    p[0]['globid'] = p[1]
+    if len(p) == 5: p[0]['params'] = p[3]
+def p_exp(p):
+    '''exp : binop
+           | uop
+           | lit
+           | varid'''
+    p[0] = p[1]
+
+def p_binop_assign(p):
+    'binop : DOLLARNAME EQUALS exp'
+    p[0] = {}
+    p[0]['name'] = 'assign'
+    p[0]['var'] = p[1]
+    p[0]['exp'] = p[3]
+def p_binop_caststmt(p):
+    'binop : LBRACK type RBRACK exp %prec TYPECAST'
+    p[0] = {}
+    p[0]['name'] = 'caststmt'
+    p[0]['type'] = p[2]
+    p[0]['exp'] = p[4]
+def p_binop(p):
+    '''binop : arithop
+             | logicop'''
+    p[0] = p[1]
+
+def p_arithop(p):
+    '''arithop : exp TIMES exp
+               | exp DIVIDE exp
+               | exp PLUS exp
+               | exp MINUS exp'''
+    p[0] = {}
+    p[0]['name'] = 'binop'
+    p[0]['op'] = binopmap[p[2]]
+    p[0]['lhs'] = p[1]
+    p[0]['rhs'] = p[3]
+def p_logicop(p):
+    '''logicop : exp EQUAL exp
+               | exp LESS exp
+               | exp GREATER exp
+               | exp BITAND exp
+               | exp BITOR exp'''
+    p[0] = {}
+    p[0]['name'] = 'binop'
+    p[0]['op'] = binopmap[p[2]]
+    p[0]['lhs'] = p[1]
+    p[0]['rhs'] = p[3]
+
+def p_uop(p):
+    '''uop : MINUS exp %prec UMINUS
+           | BITNOT exp'''
+    p[0] = {}
+    p[0]['name'] = 'uop'
+    p[0]['op'] = uopmap[p[1]]
+    p[0]['exp'] = p[2]
+
+def p_lit_lit(p):
+    'lit : NUMBER'
+    p[0] = {}
+    p[0]['name'] = 'lit'
+    p[0]['value'] = p[1]
+def p_lit_flit(p):
+    'lit : NUMBERFLOAT'
+    p[0] = {}
+    p[0]['name'] = 'flit'
+    p[0]['value'] = p[1]
+def p_lit_blit(p):
+    '''lit : TRUE
+           | FALSE'''
+    p[0] = {}
+    p[0]['name'] = 'blit'
+    p[0]['value'] = p[1]
+def p_slit(p):
+    'slit : STRING'
+    p[0] = p[1]
+
+def p_ident(p):
+    'ident : NAME'
+    p[0] = p[1]
+def p_varid(p):
+    'varid : DOLLARNAME'
+    p[0] = {}
+    p[0]['name'] = 'varval'
+    p[0]['var'] = p[1]
+def p_globid(p):
+    'globid : ident'
+    p[0] = p[1]
+
+def p_type_ref(p):
+    '''type : TYPENOALIAS TYPEREF type
+            | TYPEREF type'''
+    if len(p) == 4: p[0] = ' '.join([p[1], p[2], p[3]])
+    else: p[0] = ' '.join([p[1], p[2]])
+def p_type(p):
+    '''type : TYPEINT
+            | TYPECINT
+            | TYPEFLOAT
+            | TYPEBOOL
+            | TYPEVOID'''
+    p[0] = p[1]
+
+def p_vdecls(p):
+    '''vdecls : vdecl COMMA vdecls
+              | vdecl'''
+    if len(p) == 2:
+        p[0] = {}
+        p[0]['name'] = str(p.slice[0])
+        p[0]['vars'] = [p[1]]
+    else:
+        p[0] = p[3]
+        p[0]['vars'].insert(0, p[1])
+
+def p_tdecls(p):
+    '''tdecls : type COMMA tdecls
+              | type'''
+    if len(p) == 2:
+        p[0] = {}
+        p[0]['name'] = str(p.slice[0])
+        p[0]['types'] = [p[1]]
+    else:
+        p[0] = p[3]
+        p[0]['types'].insert(0, p[1])
+
+def p_vdecl(p):
+    'vdecl : type DOLLARNAME'
+    p[0] = {}
+    p[0]['node'] = 'vdecl'
+    p[0]['type'] = p[1]
+    p[0]['var'] = p[2]
+
+def p_error(p):
+    if t:
+        print("Syntax error at {}".format(t))
+    else:
+        print('Syntax Error at EOF')
+
+
+parser = yacc.yacc(debug=True)
+
+
+
 if __name__=='__main__':
     if len(sys.argv) == 1:
         while True:
-            lexer.input(input('lex >> '))
-            for lexed in lexer:
-                print(lexed)
+            print(parser.parse(input('parse >> ')))
     else:
         for fileg in sys.argv[1:]:
             for file in glob.glob(fileg):
                 with open(file) as filep:
-                    print(file, '\n')
-                    lexer.input(filep.read())
-                    for lexed in lexer:
-                        print(lexed)
-                    print('\n')
+                    ast = parser.parse(filep.read())
+                    with open(file+'.ast.json', 'w') as ast_out:
+                        json.dump(ast, ast_out, indent=4)
