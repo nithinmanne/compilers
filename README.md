@@ -3,7 +3,7 @@ Compilers Assignment Repository
 
 ## Usage
 ```
-python3 ekcc.py [-h|-?] [-v] [-O] [-emit-ast|-emit-llvm] -o <output-file> <input-file>
+python3[.7] ekcc.py [-h|-?] [-v] [-O] [-emit-ast|-emit-llvm] -o <output-file> <input-file>
 
 The Extended-Kaleidoscope Language Compiler
 
@@ -26,7 +26,7 @@ optional arguments:
 
 Use requirements.txt to installall dependencies
 ```
-pip3 install -r requirements.txt
+python3[.7] -m pip install -r requirements.txt
 ```
 
 ## Authors
