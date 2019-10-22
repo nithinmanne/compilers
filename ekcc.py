@@ -407,7 +407,10 @@ yacc_parser = yacc.yacc(debug=False)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='The Extended-Kaleidoscope Language Compiler', add_help=False, usage='%(prog)s [-h|-?] [-v] [-O] [-emit-ast|-emit-llvm] -o <output-file> <input-file>')
+    parser = argparse.ArgumentParser(description='The Extended-Kaleidoscope Language Compiler',
+                                     add_help=False,
+                                     usage='%(prog)s [-h|-?] [-v] [-O] [-emit-ast|-emit-llvm] -o <output-file> <input-file>',
+                                     epilog='Author: Naga Nithin Manne')
 
     parser.add_argument('-h', '-?', action='help', default=argparse.SUPPRESS,
                             help='Show this help message and exit')
