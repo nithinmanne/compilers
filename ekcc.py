@@ -1,4 +1,5 @@
-import sys, glob, json
+import argparse
+import yaml
 import ply.lex as lex
 import ply.yacc as yacc
 
@@ -112,19 +113,19 @@ precedence = (
     )
 
 binopmap = {
-    t_TIMES[1:]: 'mul',
-    t_DIVIDE[1:]: 'div',
-    t_PLUS[1:]: 'add',
-    t_MINUS[1:]: 'sub',
-    '==': 'eq', # t_EQUAL[1:]
-    t_LESS[1:]: 'lt',
-    t_GREATER[1:]: 'gt',
-    '&&': 'and', # t_BITAND[1:]
-    '||': 'or', # t_BITOR[1:]
+    t_TIMES.replace('\\',''): 'mul',
+    t_DIVIDE.replace('\\',''): 'div',
+    t_PLUS.replace('\\',''): 'add',
+    t_MINUS.replace('\\',''): 'sub',
+    t_EQUAL.replace('\\',''): 'eq'.replace('\\',''),
+    t_LESS.replace('\\',''): 'lt',
+    t_GREATER.replace('\\',''): 'gt',
+    t_BITAND.replace('\\',''): 'and',
+    t_BITOR.replace('\\',''): 'or',
 }
 uopmap = {
-    t_MINUS[1:]: 'minus',
-    t_BITNOT[1:]: 'not',
+    t_MINUS.replace('\\',''): 'minus',
+    t_BITNOT.replace('\\',''): 'not',
 }
 
 def p_prog(p):
@@ -395,24 +396,51 @@ def p_vdecl(p):
     p[0]['var'] = p[2]
 
 def p_error(p):
-    if t:
-        print("Syntax error at {}".format(t))
+    if p:
+        print("Syntax error at {}".format(p))
     else:
         print('Syntax Error at EOF')
 
 
-parser = yacc.yacc(debug=True)
+yacc_parser = yacc.yacc(debug=False)
+
+
+
+def main():
+    parser = argparse.ArgumentParser(description='The Extended-Kaleidoscope Language Compiler', add_help=False, usage='%(prog)s [-h|-?] [-v] [-O] [-emit-ast|-emit-llvm] -o <output-file> <input-file>')
+
+    parser.add_argument('-h', '-?', action='help', default=argparse.SUPPRESS,
+                            help='Show this help message and exit')
+
+    parser.add_argument('-v', action='store_true', help='Enable Verbose mode')
+
+    parser.add_argument('-O', action='store_true', help='Enable Optimization')
+
+    emit_group = parser.add_mutually_exclusive_group()
+    emit_group.add_argument('-emit-ast', action='store_true', help='Dump AST in YAML Format to the Output File')
+    emit_group.add_argument('-emit-llvm', action='store_true', help='Dump LLVM IR to the Output File')
+
+    parser.add_argument('-o', metavar='output-file', help='Output File to emit AST or LLVM IR')
+
+    parser.add_argument('input', metavar='input-file', help='Input .ek File to Compile')
+
+    args = parser.parse_args()
+
+    with open(args.input) as input_file:
+        ast = yacc_parser.parse(input_file.read())
+
+    if args.emit_ast:
+        if args.o:
+            with open(args.o, 'w') as ast_output_file:
+                yaml.dump(ast, ast_output_file, indent=2, sort_keys=False, explicit_start=True, explicit_end=True)
+        else:
+            print(yaml.dump(ast, indent=2, sort_keys=False, explicit_start=True, explicit_end=True))
+    elif args.emit_llvm:
+        raise NotImplementedError('Not Implemented LLVM IR Dump')
+
+    raise NotImplementedError('Not Implemented Compiling after AST Generation')
 
 
 
 if __name__=='__main__':
-    if len(sys.argv) == 1:
-        while True:
-            print(parser.parse(input('parse >> ')))
-    else:
-        for fileg in sys.argv[1:]:
-            for file in glob.glob(fileg):
-                with open(file) as filep:
-                    ast = parser.parse(filep.read())
-                    with open(file+'.ast.json', 'w') as ast_out:
-                        json.dump(ast, ast_out, indent=4)
+    main()

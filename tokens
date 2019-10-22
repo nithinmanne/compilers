@@ -1,3 +1,5 @@
+# Just For Reference, Not Used in Code
+
 EXTERN = extern
 LPAREN = (
 RPAREN = )
@@ -52,3 +54,67 @@ STRING
 SPECIAL:
 IGNORE
 COMMENTS
+
+GRAMMER from DOC:
+
+<prog>      ::= <extern>* <func>+
+
+<extern>    ::=  extern <type> <globid> "(" <tdecls>? ")" ";"
+
+<func>      ::= def <type> <globid> "(" <vdecls>? ")" <blk>
+<blk>       ::= "{" <stmts>? "}"
+<stmts>     ::= <stmt>+
+
+<stmt>      ::= <blk>
+              | return <exp>? ";"
+              | <vdecl> "=" <exp> ";"
+              | <exp> ";"
+              | while "(" <exp> ")" <stmt>
+              | if "(" <exp> ")" <stmt> (else <stmt>)?
+              | print <exp> ";"
+              | print <slit> ";"
+
+<exps>      ::= <exp> | <exp> "," <exps>
+<exp>       ::= "(" <exp> ")"
+              | <binop>
+              | <uop>
+              | <lit>
+              | <varid>
+              | <globid> "(" <exps>? ")"
+
+<binop>     ::= <arith-ops>
+              | <logic-ops>
+              | <varid> = <exp>         # assignment
+              | "[" <type> "]" <exp>    # explicit type-cast
+
+<arith-ops> ::= <exp> * <exp>
+              | <exp> / <exp>
+              | <exp> + <exp>
+              | <exp> - <exp>
+
+<logic-ops> ::= <exp> == <exp>    # equality
+              | <exp> < <exp>
+              | <exp> > <exp>
+              | <exp> && <exp>    # bitwise AND only for bools
+              | <exp> || <exp>    # bitwise OR only for bools
+
+
+
+
+<uop>       ::= ! <exp>          # bitwise negation on bools
+              | - <exp>          # signed negation
+
+
+<lit>     ::= true
+            | false
+            | [0-9]+(\.[0-9]+)?
+
+<slit>    ::= "[^"\n\r]*"
+
+<ident>   ::= [a-zA-Z_]+[a-zA-Z0-9_]*
+<varid>   ::= $<ident>         # no space between $ and <ident>.
+<globid>  ::= <ident>
+<type>    ::= int | cint | float | bool | void | (noalias)? ref <type>
+<vdecls>  ::= <vdecl> | <vdecl> "," <vdecls>
+<tdecls>  ::= <type> | <type> "," <tdecls>
+<vdecl>   ::= <type> <varid>
