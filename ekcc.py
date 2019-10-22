@@ -117,7 +117,7 @@ binopmap = {
     t_DIVIDE.replace('\\',''): 'div',
     t_PLUS.replace('\\',''): 'add',
     t_MINUS.replace('\\',''): 'sub',
-    t_EQUAL.replace('\\',''): 'eq'.replace('\\',''),
+    t_EQUAL.replace('\\',''): 'eq',
     t_LESS.replace('\\',''): 'lt',
     t_GREATER.replace('\\',''): 'gt',
     t_BITAND.replace('\\',''): 'and',
