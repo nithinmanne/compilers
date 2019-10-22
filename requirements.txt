@@ -1,3 +1,2 @@
-setuptools
 ply>=3.11
 PyYAML>=5.1.2
