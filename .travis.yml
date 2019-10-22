@@ -12,4 +12,4 @@ python:
 
 # Run the unit test
 script:
-  - python .travis/emit_ast_test.py
+  - .travis/emit_ast_test.sh
