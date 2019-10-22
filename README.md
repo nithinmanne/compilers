@@ -1,4 +1,4 @@
-# Compilers
+# Compilers [![Build Status](https://travis-ci.com/nithinmanne/compilers.svg?token=qkM8xJGEEgqsq7NrzJ3U&branch=master)](https://travis-ci.com/nithinmanne/compilers)
 Compilers Assignment Repository
 
 ## Usage
