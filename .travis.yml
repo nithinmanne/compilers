@@ -1,0 +1,15 @@
+# Disable sudo to speed up the build
+sudo: false
+
+# Set the build language to Python
+language: python
+
+python:
+  - "3.5"
+  - "3.6"
+  - "3.7"
+  - "3.8"
+
+# Run the unit test
+script:
+  - python .travis/emit_ast_test.py
