@@ -24,9 +24,9 @@ optional arguments:
 2.  [PLY](https://www.dabeaz.com/ply/) used for Lexing/Parsing (version >= 3.11)
 3.  [PyYAM](https://github.com/yaml/pyyaml/) used for generation YAML output (version >= 5.1.2)
 
-Use requirements.txt to installall dependencies
+Use requirements.txt to install all dependencies
 ```
-python3[.7] -m pip install -r requirements.txt
+python3[.7] -m pip install --user -r requirements.txt
 ```
 
 ## Authors
