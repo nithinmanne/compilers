@@ -1,3 +1,4 @@
+import sys
 import argparse
 import yaml
 import ply.lex as lex
@@ -88,10 +89,13 @@ def t_STRING(t):
 
 
 def t_error(t):
-    print('Illegal Character "{}" at Line {} and Column {}'.format(t.value[0],
-                                                                   t.lexer.lineno,
-                                                                   find_column(t.lexer.lexdata, t)))
-    t.lexer.skip(1)
+    if t:
+        print('Illegal Character\n{} at Line {} and Column {}'.format(repr(str(t.value[0])),
+                                                                          t.lexer.lineno,
+                                                                          find_column(t.lexer.lexdata, t)))
+    else:
+        print('Illegal Character at End of File')
+    sys.exit(1)
 
 
 lexer = lex.lex()
@@ -397,9 +401,12 @@ def p_vdecl(p):
 
 def p_error(p):
     if p:
-        print("Syntax error at {}".format(p))
+        print('Syntax Error\n{} at Line {} and Column {}'.format(repr(str(p.value)),
+                                                                p.lexer.lineno,
+                                                                find_column(p.lexer.lexdata, p)))
     else:
-        print('Syntax Error at EOF')
+        print('Syntax Error at End of File')
+    sys.exit(1)
 
 
 yacc_parser = yacc.yacc(debug=False)
