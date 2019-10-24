@@ -1,5 +1,6 @@
 import sys
 import argparse
+from collections import OrderedDict
 import yaml
 import ply.lex as lex
 import ply.yacc as yacc
@@ -135,11 +136,11 @@ uopmap = {
 def p_prog(p):
     '''prog : externs funcs
             | funcs'''
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'prog'
     if len(p) == 3:
-        p[0]['funcs'] = p[2]
         p[0]['externs'] = p[1]
+        p[0]['funcs'] = p[2]
     else: p[0]['funcs'] = p[1]
 
 
@@ -147,7 +148,7 @@ def p_externs(p):
     '''externs : extern externs
                | extern'''
     if len(p) == 2:
-        p[0] = {}
+        p[0] = OrderedDict()
         p[0]['name'] = str(p.slice[0])
         p[0][p[0]['name']] = [p[1]]
     else:
@@ -157,7 +158,7 @@ def p_externs(p):
 def p_extern(p):
     '''extern : EXTERN type globid LPAREN tdecls RPAREN SEMICOLON
               | EXTERN type globid LPAREN RPAREN SEMICOLON'''
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = str(p.slice[0])
     p[0]['ret_type'] = p[2]
     p[0]['globid'] = p[3]
@@ -168,7 +169,7 @@ def p_funcs(p):
     '''funcs : func funcs
              | func'''
     if len(p) == 2:
-        p[0] = {}
+        p[0] = OrderedDict()
         p[0]['name'] = str(p.slice[0])
         p[0][p[0]['name']] = [p[1]]
     else:
@@ -178,19 +179,19 @@ def p_funcs(p):
 def p_func(p):
     '''func : DEF type globid LPAREN vdecls RPAREN blk
             | DEF type globid LPAREN RPAREN blk'''
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = str(p.slice[0])
     p[0]['ret_type'] = p[2]
     p[0]['globid'] = p[3]
     if len(p) == 8:
-        p[0]['blk'] = p[7]
         p[0]['vdecls'] = p[5]
+        p[0]['blk'] = p[7]
     else:
         p[0]['blk'] = p[6]
 
 def p_blk(p):
     'blk : LBRACE stmts RBRACE'
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = str(p.slice[0])
     p[0]['contents'] = p[2]
 
@@ -198,7 +199,7 @@ def p_stmts(p):
     '''stmts : stmt stmts
              | stmt'''
     if len(p) == 2:
-        p[0] = {}
+        p[0] = OrderedDict()
         p[0]['name'] = str(p.slice[0])
         p[0][p[0]['name']] = [p[1]]
     else:
@@ -211,42 +212,42 @@ def p_stmt_blk(p):
 def p_stmt_ret(p):
     '''stmt : RETURN exp SEMICOLON
             | RETURN SEMICOLON'''
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'ret'
     if len(p) == 4: p[0]['exp'] = p[2]
 def p_stmt_vardeclstmt(p):
     'stmt : vdecl EQUALS exp SEMICOLON'
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'vardeclstmt'
     p[0]['vdecl'] = p[1]
     p[0]['exp'] = p[3]
 def p_stmt_expstmt(p):
     'stmt : exp SEMICOLON'
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'expstmt'
     p[0]['exp'] = p[1]
 def p_stmt_while(p):
     'stmt : WHILE LPAREN exp RPAREN stmt'
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'while'
     p[0]['cond'] = p[3]
     p[0]['stmt'] = p[5]
 def p_stmt_if(p):
     '''stmt : IF LPAREN exp RPAREN stmt ELSE stmt
             | IF LPAREN exp RPAREN stmt %prec IFX'''
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'if'
     p[0]['cond'] = p[3]
     p[0]['stmt'] = p[5]
     if len(p) == 8: p[0]['else_stmt'] = p[7]
 def p_stmt_print(p):
     'stmt : PRINT exp SEMICOLON'
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'print'
     p[0]['exp'] = p[2]
 def p_stmt_printslit(p):
     'stmt : PRINT slit SEMICOLON'
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'printslit'
     p[0]['string'] = p[2]
 
@@ -254,7 +255,7 @@ def p_exps(p):
     '''exps : exp COMMA exps
             | exp'''
     if len(p) == 2:
-        p[0] = {}
+        p[0] = OrderedDict()
         p[0]['name'] = str(p.slice[0])
         p[0][p[0]['name']] = [p[1]]
     else:
@@ -267,7 +268,7 @@ def p_exp_exp(p):
 def p_exp_funccall(p):
     '''exp : globid LPAREN exps RPAREN
            | globid LPAREN RPAREN'''
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'funccall'
     p[0]['globid'] = p[1]
     if len(p) == 5: p[0]['params'] = p[3]
@@ -280,13 +281,13 @@ def p_exp(p):
 
 def p_binop_assign(p):
     'binop : DOLLARNAME EQUALS exp'
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'assign'
     p[0]['var'] = p[1]
     p[0]['exp'] = p[3]
 def p_binop_caststmt(p):
     'binop : LBRACK type RBRACK exp %prec TYPECAST'
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'caststmt'
     p[0]['type'] = p[2]
     p[0]['exp'] = p[4]
@@ -300,7 +301,7 @@ def p_arithop(p):
                | exp DIVIDE exp
                | exp PLUS exp
                | exp MINUS exp'''
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'binop'
     p[0]['op'] = binopmap[p[2]]
     p[0]['lhs'] = p[1]
@@ -311,7 +312,7 @@ def p_logicop(p):
                | exp GREATER exp
                | exp BITAND exp
                | exp BITOR exp'''
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'binop'
     p[0]['op'] = binopmap[p[2]]
     p[0]['lhs'] = p[1]
@@ -320,25 +321,25 @@ def p_logicop(p):
 def p_uop(p):
     '''uop : MINUS exp %prec UMINUS
            | BITNOT exp'''
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'uop'
     p[0]['op'] = uopmap[p[1]]
     p[0]['exp'] = p[2]
 
 def p_lit_lit(p):
     'lit : NUMBER'
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'lit'
     p[0]['value'] = p[1]
 def p_lit_flit(p):
     'lit : NUMBERFLOAT'
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'flit'
     p[0]['value'] = p[1]
 def p_lit_blit(p):
     '''lit : TRUE
            | FALSE'''
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'blit'
     p[0]['value'] = p[1]
 def p_slit(p):
@@ -350,7 +351,7 @@ def p_ident(p):
     p[0] = p[1]
 def p_varid(p):
     'varid : DOLLARNAME'
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['name'] = 'varval'
     p[0]['var'] = p[1]
 def p_globid(p):
@@ -374,7 +375,7 @@ def p_vdecls(p):
     '''vdecls : vdecl COMMA vdecls
               | vdecl'''
     if len(p) == 2:
-        p[0] = {}
+        p[0] = OrderedDict()
         p[0]['name'] = str(p.slice[0])
         p[0]['vars'] = [p[1]]
     else:
@@ -385,7 +386,7 @@ def p_tdecls(p):
     '''tdecls : type COMMA tdecls
               | type'''
     if len(p) == 2:
-        p[0] = {}
+        p[0] = OrderedDict()
         p[0]['name'] = str(p.slice[0])
         p[0]['types'] = [p[1]]
     else:
@@ -394,7 +395,7 @@ def p_tdecls(p):
 
 def p_vdecl(p):
     'vdecl : type DOLLARNAME'
-    p[0] = {}
+    p[0] = OrderedDict()
     p[0]['node'] = 'vdecl'
     p[0]['type'] = p[1]
     p[0]['var'] = p[2]
@@ -440,6 +441,7 @@ def main():
         ast = yacc_parser.parse(input_file.read())
 
     if args.emit_ast:
+        yaml.representer.Representer.add_representer(OrderedDict, yaml.representer.Representer.represent_dict)
         if args.o:
             with open(args.o, 'w') as ast_output_file:
                 yaml.dump(ast, ast_output_file, indent=2, sort_keys=False, explicit_start=True, explicit_end=True)
