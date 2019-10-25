@@ -414,7 +414,7 @@ yacc_parser = yacc.yacc(debug=False)
 
 
 
-def main():
+def main(input_args=None):
     parser = argparse.ArgumentParser(description='The Extended-Kaleidoscope Language Compiler',
                                      add_help=False,
                                      usage='%(prog)s [-h|-?] [-v] [-O] [-emit-ast|-emit-llvm] -o <output-file> <input-file>',
@@ -435,7 +435,7 @@ def main():
 
     parser.add_argument('input', metavar='input-file', help='Input .ek File to Compile')
 
-    args = parser.parse_args()
+    args = parser.parse_args(args=input_args)
 
     with open(args.input) as input_file:
         ast = yacc_parser.parse(input_file.read())
