@@ -22,7 +22,7 @@ optional arguments:
 ## Prerequisites
 1.  [Python 3](https://www.python.org/) (version >= 3.5)
 2.  [PLY](https://www.dabeaz.com/ply/) used for Lexing/Parsing (version >= 3.11)
-3.  [PyYAM](https://github.com/yaml/pyyaml/) used for generation YAML output (version >= 5.1.2)
+3.  [PyYAML](https://github.com/yaml/pyyaml/) used for generation YAML output (version >= 5.1.2)
 
 Use requirements.txt to install all dependencies
 ```
