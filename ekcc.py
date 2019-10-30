@@ -1,6 +1,6 @@
 import sys
 import argparse
-from enum import Enum, auto
+from enum import Enum
 from collections import OrderedDict
 import yaml
 import ply.lex as lex
@@ -11,8 +11,8 @@ import ply.yacc as yacc
 class Exit(Enum):
     SUCCESS = 0
     NOT_IMPLEMENTED = 1
-    LEXING_ERROR = auto()
-    PARSING_ERROR = auto()
+    LEXING_ERROR = 2
+    PARSING_ERROR = 3
 
     def _is_error(self):
         if self in [self.SUCCESS, self.NOT_IMPLEMENTED]: return False
