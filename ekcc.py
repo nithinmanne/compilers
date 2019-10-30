@@ -295,13 +295,9 @@ class Type:
         self.ref = ref
         self.type = type
     def __str__(self):
-        return 'noalias'*self.noalias +\
-               'ref'*self.ref +\
+        return 'noalias '*self.noalias +\
+               'ref '*self.ref +\
                self.type
-    '''def __getitem__(self, value):
-        return 'noalias'*self.noalias +\
-               'ref'*self.ref +\
-               self.type'''
 
 
 
