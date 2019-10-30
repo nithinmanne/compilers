@@ -1,15 +1,49 @@
 import sys
 import argparse
+from enum import Enum, auto
 from collections import OrderedDict
 import yaml
 import ply.lex as lex
 import ply.yacc as yacc
 
-# Lexing Rules
+# Class Definitions
 
-def find_column(input, token):
-    line_start = input.rfind('\n', 0, token.lexpos) + 1
-    return (token.lexpos - line_start) + 1
+class Exit(Enum):
+    SUCCESS = 0
+    NOT_IMPLEMENTED = 1
+    LEXING_ERROR = auto()
+    PARSING_ERROR = auto()
+
+    def _is_error(self):
+        if self in [self.SUCCESS, self.NOT_IMPLEMENTED]: return False
+        else: return True
+
+    def _print(self, *args):
+        print('error:', end='\t')
+        if self is self.LEXING_ERROR:
+            if args[0]:
+                print('Illegal Character {} in Line {}'.format(args[0].value[0], args[0].lexer.lineno))
+            else:
+                print('Illegal Character at End of File')
+
+        elif self is self.PARSING_ERROR:
+            if args[0]:
+                print('Syntax Error {} in Line {}'.format(args[0].value[0], args[0].lexer.lineno))
+            else:
+                print('Syntax Error at End of File')
+
+
+
+    def __call__(self, *args):
+        if self._is_error():
+            self._print(*args)
+
+        sys.exit(self.value)
+
+
+
+
+# Lexing Rules
 
 reserved = {
     'extern': 'EXTERN',
@@ -90,13 +124,7 @@ def t_STRING(t):
 
 
 def t_error(t):
-    if t:
-        print('Illegal Character\n{} at Line {} and Column {}'.format(repr(str(t.value[0])),
-                                                                          t.lexer.lineno,
-                                                                          find_column(t.lexer.lexdata, t)))
-    else:
-        print('Illegal Character at End of File')
-    sys.exit(1)
+    Exit.LEXING_ERROR(t)
 
 
 lexer = lex.lex()
@@ -401,13 +429,7 @@ def p_vdecl(p):
     p[0]['var'] = p[2]
 
 def p_error(p):
-    if p:
-        print('Syntax Error\n{} at Line {} and Column {}'.format(repr(str(p.value)),
-                                                                p.lexer.lineno,
-                                                                find_column(p.lexer.lexdata, p)))
-    else:
-        print('Syntax Error at End of File')
-    sys.exit(1)
+    Exit.PARSING_ERROR(p)
 
 
 yacc_parser = yacc.yacc(debug=False)
