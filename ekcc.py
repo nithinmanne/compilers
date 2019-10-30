@@ -53,7 +53,7 @@ class Nodelist(Node):
     def __init__(self, lineno, node):
         super().__init__(lineno)
         self.nodelist = [node]
-    def insert(self, node):
+    def __add__(self, node):
         self.nodelist = [node] + self.nodelist
         return self
     def items(self):
@@ -289,6 +289,20 @@ class Vdecl(Node):
         return [('node', self.name)] + [('type', self.type),
                                         ('var', self.var)]
 
+class Type:
+    def __init__(self, noalias, ref, type):
+        self.noalias = noalias
+        self.ref = ref
+        self.type = type
+    def __str__(self):
+        return 'noalias'*self.noalias +\
+               'ref'*self.ref +\
+               self.type
+    '''def __getitem__(self, value):
+        return 'noalias'*self.noalias +\
+               'ref'*self.ref +\
+               self.type'''
+
 
 
 # Lexing Rules
@@ -424,7 +438,7 @@ def p_externs(p):
     if len(p) == 2:
         p[0] = Externs(lineno=p.lexer.lineno, node=p[1])
     else:
-        p[0] = p[2].insert(p[1])
+        p[0] = p[2] + p[1]
 
 def p_extern(p):
     '''extern : EXTERN type globid LPAREN tdecls RPAREN SEMICOLON
@@ -441,7 +455,7 @@ def p_funcs(p):
     if len(p) == 2:
         p[0] = Funcs(lineno=p.lexer.lineno, node=p[1])
     else:
-        p[0] = p[2].insert(p[1])
+        p[0] = p[2] + p[1]
 
 def p_func(p):
     '''func : DEF type globid LPAREN vdecls RPAREN blk
@@ -461,7 +475,7 @@ def p_stmts(p):
     if len(p) == 2:
         p[0] = Stmts(lineno=p.lexer.lineno, node=p[1])
     else:
-        p[0] = p[2].insert(p[1])
+        p[0] = p[2] + p[1]
 
 def p_stmt_blk(p):
     'stmt : blk'
@@ -502,7 +516,7 @@ def p_exps(p):
     if len(p) == 2:
         p[0] = Exps(lineno=p.lexer.lineno, node=p[1])
     else:
-        p[0] = p[3].insert(p[1])
+        p[0] = p[3] + p[1]
 
 def p_exp_exp(p):
     'exp : LPAREN exp RPAREN'
@@ -576,16 +590,21 @@ def p_globid(p):
     p[0] = p[1]
 
 def p_type_ref(p):
-    '''type : TYPENOALIAS TYPEREF type
-            | TYPEREF type'''
-    if len(p) == 4: p[0] = ' '.join([p[1], p[2], p[3]])
-    else: p[0] = ' '.join([p[1], p[2]])
+    '''type : TYPENOALIAS TYPEREF ftype
+            | TYPEREF ftype
+            | ftype'''
+    if len(p) == 4:
+        p[0] = Type(noalias=True, ref=True, type=p[3])
+    elif len(p) == 3:
+        p[0] = Type(noalias=False, ref=True, type=p[2])
+    else:
+        p[0] = Type(noalias=False, ref=False, type=p[1])
 def p_type(p):
-    '''type : TYPEINT
-            | TYPECINT
-            | TYPEFLOAT
-            | TYPEBOOL
-            | TYPEVOID'''
+    '''ftype : TYPEINT
+             | TYPECINT
+             | TYPEFLOAT
+             | TYPEBOOL
+             | TYPEVOID'''
     p[0] = p[1]
 
 def p_vdecls(p):
@@ -594,7 +613,7 @@ def p_vdecls(p):
     if len(p) == 2:
         p[0] = Vdecls(lineno=p.lexer.lineno, node=p[1])
     else:
-        p[0] = p[3].insert(p[1])
+        p[0] = p[3] + p[1]
 
 def p_tdecls(p):
     '''tdecls : type COMMA tdecls
@@ -602,7 +621,7 @@ def p_tdecls(p):
     if len(p) == 2:
         p[0] = Tdecls(lineno=p.lexer.lineno, node=p[1])
     else:
-        p[0] = p[3].insert(p[1])
+        p[0] = p[3] + p[1]
 
 def p_vdecl(p):
     'vdecl : type DOLLARNAME'
@@ -644,6 +663,7 @@ def main(input_args=None):
 
     if args.emit_ast:
         yaml.representer.Representer.add_multi_representer(Node, yaml.representer.Representer.represent_dict)
+        yaml.representer.Representer.add_representer(Type, lambda s, d: yaml.representer.Representer.represent_str(s, str(d)))
         if args.o:
             with open(args.o, 'w') as ast_output_file:
                 yaml.dump(ast, ast_output_file, indent=2, sort_keys=False, explicit_start=True, explicit_end=True)
