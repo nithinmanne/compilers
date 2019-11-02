@@ -10,12 +10,12 @@ def float test1(noalias ref float $a, noalias ref float $b, float $c) {
   int $xyz = 2;
 
   while ($xyz > 8) {
-    $x = $a + $b - $c / $a * $b;
+    $x = [int]($a + $b - $c / $a * $b);
     if ($a == $b)
       $xy = [int] 1;
     else
       $xy = 0;
-    if ($xyz > -$xy && $a < $b || ($c == $a || !$x)) {
+    if ($xyz > -$xy && $a < $b || ($c == $a)) {
       return $a;
     } else {
       $a = 8.5;

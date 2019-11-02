@@ -14,14 +14,24 @@ class Exit(Enum):
     NOT_IMPLEMENTED = 1
     LEXING_ERROR = 2
     PARSING_ERROR = 3
+    INVALID_TYPE_ERROR = 4
+    TYPE_CAST_ERROR = 5
+    IMPLICIT_TYPE_CAST_ERROR = 6
+    UNDECLARED_USAGE_ERROR = 7
+    REDECLARED_NAME_ERROR = 8
+    INVALID_RETURN_TYPE_ERROR = 9
+    RUN_FUNCTION_MISSING = 10
 
     def _is_error(self):
-        if self in [self.SUCCESS, self.NOT_IMPLEMENTED]: return False
+        if self is self.SUCCESS: return False
         else: return True
 
     def _print(self, *args):
         print('error:', end='\t')
-        if self is self.LEXING_ERROR:
+        if self is self.NOT_IMPLEMENTED:
+            print('Not Implemented Operation ({})'.format(args[0]))
+
+        elif self is self.LEXING_ERROR:
             if args[0]:
                 print('Illegal Character {} in Line {}'.format(args[0].value[0], args[0].lexer.lineno))
             else:
@@ -29,9 +39,31 @@ class Exit(Enum):
 
         elif self is self.PARSING_ERROR:
             if args[0]:
-                print('Syntax Error {} in Line {}'.format(args[0].value[0], args[0].lexer.lineno))
+                print('Parsing Syntax Error {} in Line {}'.format(args[0].value, args[0].lexer.lineno))
             else:
-                print('Syntax Error at End of File')
+                print('Parsing Syntax Error at End of File')
+
+        elif self is self.INVALID_TYPE_ERROR:
+            print('Invalid Type in Line {}'.format(args[0]))
+
+        elif self is self.TYPE_CAST_ERROR:
+            print('Invalid Type Cast from {} to {} in Line {}'.format(args[2], args[1], args[0]))
+
+        elif self is self.IMPLICIT_TYPE_CAST_ERROR:
+            print('Implicit Type Cast between {} and {} in Line {}'.format(args[1], args[2], args[0]))
+
+        elif self is self.UNDECLARED_USAGE_ERROR:
+            print('Undeclared/Invalid Usage of {} in Line {}'.format(args[1], args[0]))
+
+        elif self is self.REDECLARED_NAME_ERROR:
+            print('Redeclaration of {} in Line {}'.format(args[1], args[0]))
+
+        elif self is self.INVALID_RETURN_TYPE_ERROR:
+            print('Invalid Return Type for {} in Line {}'.format(args[1], args[0]))
+
+        elif self is self.RUN_FUNCTION_MISSING:
+            print('int run() Function missing')
+
 
 
 
@@ -43,11 +75,31 @@ class Exit(Enum):
 
 
 class Node(ABC):
-    @abstractmethod
-    def items(self):
-        return [('name', self.name)]
     def __init__(self, lineno):
         self.lineno = lineno
+    def _set_scope(self, scope):
+        self.scope = scope
+    @abstractmethod
+    def walk_ast(self, scope):
+        self._set_scope(scope)
+    @abstractmethod
+    def items(self):
+        return [('name', self.name),
+                ('lineno', self.lineno)]
+
+class Stmt(Node):
+    pass
+
+class Exp(Node):
+    @abstractmethod
+    def _set_type(self):
+        pass
+    def walk_ast(self, scope):
+        super().walk_ast(scope.copy())
+        self._set_type()
+    def items(self):
+        return super().items() + [('type', str(self.type))]
+
 
 class Nodelist(Node):
     def __init__(self, lineno, node):
@@ -56,6 +108,17 @@ class Nodelist(Node):
     def __add__(self, node):
         self.nodelist = [node] + self.nodelist
         return self
+    def __len__(self):
+        return len(self.nodelist)
+    def __getitem__(self, index):
+        return self.nodelist[index]
+    def __iter__(self):
+        return iter(self.nodelist)
+    def walk_ast(self, scope):
+        for node in self:
+            node.walk_ast(scope.copy())
+            scope = node.scope
+        super().walk_ast(scope.copy())
     def items(self):
         return super().items() + [(self.listname, self.nodelist)]
 
@@ -65,6 +128,28 @@ class Prog(Node):
         super().__init__(lineno)
         self.externs = externs
         self.funcs = funcs
+    def walk_ast(self, scope=None):
+        if not scope:
+            scope = Scope()
+        arg = Extern(lineno=-1, ret_type=Type(lineno=-1, noalias=False, ref=False, type='int'),
+                     globid='arg', tdecls=Tdecls(lineno=-1, node=Type(lineno=-1, noalias=False, ref=False, type='int')))
+        argf = Extern(lineno=-1, ret_type=Type(lineno=-1, noalias=False, ref=False, type='float'),
+                      globid='argf', tdecls=Tdecls(lineno=-1, node=Type(lineno=-1, noalias=False, ref=False, type='int')))
+        if self.externs:
+            self.externs = self.externs + argf
+        else:
+            self.externs = Externs(lineno=-1, node=argf)
+        self.externs = self.externs + arg
+        self.externs.walk_ast(scope.copy())
+        scope = self.externs.scope
+        self.funcs.walk_ast(scope.copy())
+        scope = self.funcs.scope
+        try:
+            if str(scope('run', None)) != 'int':
+                raise ScopeException
+        except ScopeException:
+            Exit.RUN_FUNCTION_MISSING()
+        super().walk_ast(scope.copy())
     def items(self):
         items = super().items()
         if self.externs: items.append(('externs', self.externs))
@@ -82,8 +167,20 @@ class Extern(Node):
         self.ret_type = ret_type
         self.globid = globid
         self.tdecls = tdecls
+    def walk_ast(self, scope):
+        self.ret_type.walk_ast(scope.copy())
+        if self.ret_type.ref:
+            Exit.INVALID_RETURN_TYPE_ERROR(self.lineno, self.globid)
+        try:
+            scope.add_callable(self)
+        except ScopeException:
+            Exit.REDECLARED_NAME_ERROR(self.lineno, self.globid)
+        if self.tdecls:
+            self.tdecls.walk_ast(scope.copy())
+        scope = self.tdecls.scope
+        super().walk_ast(scope.copy())
     def items(self):
-        return super().items() + [('ret_type', self.ret_type),
+        return super().items() + [('ret_type', str(self.ret_type)),
                                   ('globid', self.globid),
                                   ('tdecls', self.tdecls)]
 
@@ -99,19 +196,37 @@ class Func(Node):
         self.globid = globid
         self.vdecls = vdecls
         self.blk = blk
+    def walk_ast(self, scope):
+        self.ret_type.walk_ast(scope.copy())
+        if self.ret_type.ref:
+            Exit.INVALID_RETURN_TYPE_ERROR(self.lineno, self.globid)
+        try:
+            scope.add_callable(self)
+        except ScopeException:
+            Exit.REDECLARED_NAME_ERROR(self.lineno, self.globid)
+        if self.vdecls:
+            self.vdecls.walk_ast(scope.copy())
+            blk_scope = self.vdecls.scope
+        else:
+            blk_scope = scope
+        self.blk.walk_ast(blk_scope.copy())
+        super().walk_ast(scope.copy())
     def items(self):
         items = super().items()
-        items.append(('ret_type', self.ret_type))
+        items.append(('ret_type', str(self.ret_type)))
         items.append(('globid', self.globid))
         if self.vdecls: items.append(('vdecls', self.vdecls))
         items.append(('blk', self.blk))
         return items
 
-class Blk(Node):
+class Blk(Stmt):
     name = 'blk'
     def __init__(self, lineno, contents):
         super().__init__(lineno)
         self.contents = contents
+    def walk_ast(self, scope):
+        self.contents.walk_ast(scope.copy())
+        super().walk_ast(scope.copy())
     def items(self):
         return super().items() + [('contents', self.contents)]
 
@@ -119,51 +234,74 @@ class Stmts(Nodelist):
     name = 'stmts'
     listname = name
 
-class Ret(Node):
+class Ret(Stmt):
     name = 'ret'
     def __init__(self, lineno, exp):
         super().__init__(lineno)
         self.exp = exp
+    def walk_ast(self, scope):
+        if self.exp:
+            self.exp.walk_ast(scope.copy())
+        super().walk_ast(scope.copy())
     def items(self):
         items = super().items()
         if self.exp: items.append(('exp', self.exp))
         return items
 
-class Vardeclstmt(Node):
+class Vardeclstmt(Stmt):
     name = 'vardeclstmt'
     def __init__(self, lineno, vdecl, exp):
         super().__init__(lineno)
         self.vdecl = vdecl
         self.exp = exp
+    def walk_ast(self, scope):
+        self.exp.walk_ast(scope.copy())
+        self.vdecl.walk_ast(scope.copy())
+        scope = self.vdecl.scope
+        if self.vdecl.type.ref and not isinstance(self.exp, Varval):
+            Exit.INVALID_TYPE_ERROR(self.lineno)
+        super().walk_ast(scope.copy())
     def items(self):
         return super().items() + [('vdecl', self.vdecl),
                                   ('exp', self.exp)]
 
-class Expstmt(Node):
+class Expstmt(Stmt):
     name = 'expstmt'
     def __init__(self, lineno, exp):
         super().__init__(lineno)
         self.exp = exp
+    def walk_ast(self, scope):
+        self.exp.walk_ast(scope.copy())
+        super().walk_ast(scope.copy())
     def items(self):
         return super().items() + [('exp', self.exp)]
 
-class While(Node):
+class While(Stmt):
     name = 'while'
     def __init__(self, lineno, cond, stmt):
         super().__init__(lineno)
         self.cond = cond
         self.stmt = stmt
+    def walk_ast(self, scope):
+        self.cond.walk_ast(scope.copy())
+        self.stmt.walk_ast(scope.copy())
+        super().walk_ast(scope.copy())
     def items(self):
         return super().items() + [('cond', self.cond),
                                   ('stmt', self.stmt)]
 
-class If(Node):
+class If(Stmt):
     name = 'if'
     def __init__(self, lineno, cond, stmt, else_stmt):
         super().__init__(lineno)
         self.cond = cond
         self.stmt = stmt
         self.else_stmt = else_stmt
+    def walk_ast(self, scope):
+        self.cond.walk_ast(scope.copy())
+        self.stmt.walk_ast(scope.copy())
+        if self.else_stmt: self.else_stmt.walk_ast(scope.copy())
+        super().walk_ast(scope.copy())
     def items(self):
         items = super().items()
         items.append(('cond', self.cond))
@@ -171,19 +309,24 @@ class If(Node):
         if self.else_stmt: items.append(('else_stmt', self.else_stmt))
         return items
 
-class Print(Node):
+class Print(Stmt):
     name = 'print'
     def __init__(self, lineno, exp):
         super().__init__(lineno)
         self.exp = exp
+    def walk_ast(self, scope):
+        self.exp.walk_ast(scope.copy())
+        super().walk_ast(scope.copy())
     def items(self):
         return super().items() + [('exp', self.exp)]
 
-class Printslit(Node):
+class Printslit(Stmt):
     name = 'printslit'
     def __init__(self, lineno, string):
         super().__init__(lineno)
         self.string = string
+    def walk_ast(self, scope):
+        super().walk_ast(scope.copy())
     def items(self):
         return super().items() + [('string', self.string)]
 
@@ -191,61 +334,109 @@ class Exps(Nodelist):
     name = 'exps'
     listname = name
 
-class Funccall(Node):
+class Funccall(Exp):
     name = 'funccall'
     def __init__(self, lineno, globid, params):
         super().__init__(lineno)
         self.globid = globid
         self.params = params
+    def _set_type(self):
+        try:
+            self.type = self.scope(self.globid, self.params)
+        except ScopeException:
+            Exit.UNDECLARED_USAGE_ERROR(self.lineno, self.globid)
+    def walk_ast(self, scope):
+        if self.params:
+            self.params.walk_ast(scope.copy())
+        super().walk_ast(scope.copy())
     def items(self):
         items = super().items()
         items.append(('globid', self.globid))
         if self.params: items.append(('params', self.params))
         return items
 
-class Assign(Node):
+class Assign(Exp):
     name = 'assign'
     def __init__(self, lineno, var, exp):
         super().__init__(lineno)
         self.var = var
         self.exp = exp
+    def _set_type(self):
+        try:
+            self.type = self.scope[self.var]
+        except ScopeException:
+            Exit.UNDECLARED_USAGE_ERROR(self.lineno, self.var)
+        if self.type != self.exp.type:
+            Exit.INVALID_TYPE_ERROR(self.lineno)
+    def walk_ast(self, scope):
+        self.exp.walk_ast(scope.copy())
+        super().walk_ast(scope.copy())
     def items(self):
         return super().items() + [('var', self.var),
                                   ('exp', self.exp)]
 
-class Caststmt(Node):
+class Caststmt(Exp):
     name = 'caststmt'
     def __init__(self, lineno, type, exp):
         super().__init__(lineno)
         self.type = type
         self.exp = exp
+    def _set_type(self):
+        cast_type = {
+            'int': ['int', 'cint', 'float'],
+            'cint': ['int', 'cint', 'float'],
+            'float': ['int', 'cint', 'float'],
+            'bool': ['bool']
+        }
+        if str(self.type) not in cast_type[self.exp.type.type]:
+            Exit.TYPE_CAST_ERROR(self.lineno, self.type, self.exp.type)
+    def walk_ast(self, scope):
+        self.type.walk_ast(scope.copy())
+        self.exp.walk_ast(scope.copy())
+        super().walk_ast(scope.copy())
     def items(self):
-        return super().items() + [('type', self.type),
-                                  ('exp', self.exp)]
+        return super().items() + [('exp', self.exp)]
 
-class Binop(Node):
+class Binop(Exp):
     name = 'binop'
     def __init__(self, lineno, op, lhs, rhs):
         super().__init__(lineno)
         self.op = op
         self.lhs = lhs
         self.rhs = rhs
+    def _set_type(self):
+        if self.lhs.type == self.rhs.type:
+            if self.op in ['eq', 'lt', 'gt']:
+                self.type = Type(lineno=self.lineno, noalias=False, ref=False, type='bool')
+            else:
+                self.type = Type(lineno=self.lineno, noalias=False, ref=False, type=self.lhs.type.type)
+        else:
+            Exit.IMPLICIT_TYPE_CAST_ERROR(self.lineno, self.lhs.type, self.rhs.type)
+    def walk_ast(self, scope):
+        self.lhs.walk_ast(scope.copy())
+        self.rhs.walk_ast(scope.copy())
+        super().walk_ast(scope.copy())
     def items(self):
         return super().items() + [('op', self.op),
                                   ('lhs', self.lhs),
                                   ('rhs', self.rhs)]
 
-class Uop(Node):
+class Uop(Exp):
     name = 'uop'
     def __init__(self, lineno, op, exp):
         super().__init__(lineno)
         self.op = op
         self.exp = exp
+    def _set_type(self):
+        self.type = self.exp.type
+    def walk_ast(self, scope):
+        self.exp.walk_ast(scope.copy())
+        super().walk_ast(scope.copy())
     def items(self):
         return super().items() + [('op', self.op),
                                   ('exp', self.exp)]
 
-class Litnode(Node):
+class Litnode(Exp):
     def __init__(self, lineno, value):
         super().__init__(lineno)
         self.value = value
@@ -254,18 +445,29 @@ class Litnode(Node):
 
 class Lit(Litnode):
     name = 'lit'
+    def _set_type(self):
+        self.type = Type(lineno=self.lineno, noalias=False, ref=False, type='int')
 
 class Flit(Litnode):
     name = 'flit'
+    def _set_type(self):
+        self.type = Type(lineno=self.lineno, noalias=False, ref=False, type='float')
 
 class Blit(Litnode):
     name = 'blit'
+    def _set_type(self):
+        self.type = Type(lineno=self.lineno, noalias=False, ref=False, type='bool')
 
-class Varval(Node):
+class Varval(Exp):
     name = 'varval'
     def __init__(self, lineno, var):
         super().__init__(lineno)
         self.var = var
+    def _set_type(self):
+        try:
+            self.type = self.scope[self.var]
+        except ScopeException:
+            Exit.UNDECLARED_USAGE_ERROR(self.lineno, self.var)
     def items(self):
         return super().items() + [('var', self.var)]
 
@@ -276,6 +478,15 @@ class Vdecls(Nodelist):
 class Tdecls(Nodelist):
     name = 'tdecls'
     listname = 'types'
+    def walk_ast(self, scope):
+        for type in self:
+            type.walk_ast(scope.copy())
+            if type.type == 'void':
+                Exit.INVALID_TYPE_ERROR(self.lineno)
+            scope = type.scope
+        super(self.__class__.__mro__[1], self).walk_ast(scope.copy())
+    def items(self):
+        return super(self.__class__.__mro__[1], self).items() + [(self.listname, list(map(str, self.nodelist)))]
 
 class Vdecl(Node):
     name = 'vdecl'
@@ -283,22 +494,96 @@ class Vdecl(Node):
         super().__init__(lineno)
         self.type = type
         self.var = var
+    def walk_ast(self, scope):
+        self.type.walk_ast(scope.copy())
+        if self.type.type == 'void':
+            Exit.INVALID_TYPE_ERROR(self.lineno)
+        try:
+            scope.add_variable(self)
+        except ScopeException:
+            Exit.REDECLARED_NAME_ERROR(self.lineno, self.var)
+        super().walk_ast(scope.copy())
     def items(self):
-        #return super().items() + [('type', self.type),
-        #                          ('var', self.var)]
-        return [('node', self.name)] + [('type', self.type),
-                                        ('var', self.var)]
+        return super().items() + [('type', str(self.type)),
+                                  ('var', self.var)]
 
 class Type:
-    def __init__(self, noalias, ref, type):
+    def __init__(self, lineno, noalias, ref, type):
+        self.lineno = lineno
         self.noalias = noalias
         self.ref = ref
         self.type = type
     def __str__(self):
         return 'noalias '*self.noalias +\
                'ref '*self.ref +\
-               self.type
+               str(self.type)
+    def __eq__(self, other):
+        return self.type == other.type
+    def walk_ast(self, scope):
+        if isinstance(self.type, self.__class__):
+            if self.ref and self.type.ref:
+                Exit.INVALID_TYPE_ERROR(self.lineno)
+            self.type.walk_ast(scope.copy())
+            self.type = self.type.type
+            if self.type == 'void':
+                Exit.INVALID_TYPE_ERROR(self.lineno)
+        self.scope = scope
 
+
+
+class Scope:
+    def __init__(self, callables=None, variables=None):
+        if callables:
+            self.callables = callables.copy()
+        else:
+            self.callables = {}
+        if variables:
+            self.variables = variables.copy()
+        else:
+            self.variables = {}
+    def __call__(self, name, args):
+        if name not in self.callables:
+            raise ScopeException
+        call = self.callables[name]
+        if isinstance(call, Func):
+            if call.vdecls is args:
+                return call.ret_type
+            if not call.vdecls or not args or len(call.vdecls) != len(args):
+                raise ScopeException
+            for call_arg, arg in zip(call.vdecls, args):
+                if (call_arg.type != arg.type) or (call_arg.type.ref and not isinstance(arg, Varval)):
+                    raise ScopeException
+            return call.ret_type
+        elif isinstance(call, Extern):
+            if call.tdecls is args:
+                return call.ret_type
+            if not call.tdecls or not args or len(call.tdecls) != len(args):
+                raise ScopeException
+            for call_arg, arg in zip(call.tdecls, args):
+                if (call_arg != arg.type) or (call_arg.ref and not isinstance(arg, Varval)):
+                    raise ScopeException
+            return call.ret_type
+        else:
+            raise ScopeException
+    def add_callable(self, callable):
+        if callable.globid in self.callables or callable.globid in self.variables:
+            raise ScopeException
+        self.callables[callable.globid] = callable
+    def __getitem__(self, name):
+        if name not in self.variables:
+            raise ScopeException
+        return self.variables[name].type
+    def add_variable(self, variable):
+        if variable.var in self.callables or variable.var in self.variables:
+            raise ScopeException
+        self.variables[variable.var] = variable
+    def copy(self):
+        return self.__class__(callables=self.callables, variables=self.variables)
+
+
+
+class ScopeException(Exception):
+    pass
 
 
 # Lexing Rules
@@ -586,22 +871,19 @@ def p_globid(p):
     p[0] = p[1]
 
 def p_type_ref(p):
-    '''type : TYPENOALIAS TYPEREF ftype
-            | TYPEREF ftype
-            | ftype'''
+    '''type : TYPENOALIAS TYPEREF type
+            | TYPEREF type'''
     if len(p) == 4:
-        p[0] = Type(noalias=True, ref=True, type=p[3])
-    elif len(p) == 3:
-        p[0] = Type(noalias=False, ref=True, type=p[2])
+        p[0] = Type(lineno=p.lexer.lineno, noalias=True, ref=True, type=p[3])
     else:
-        p[0] = Type(noalias=False, ref=False, type=p[1])
+        p[0] = Type(lineno=p.lexer.lineno, noalias=False, ref=True, type=p[2])
 def p_type(p):
-    '''ftype : TYPEINT
-             | TYPECINT
-             | TYPEFLOAT
-             | TYPEBOOL
-             | TYPEVOID'''
-    p[0] = p[1]
+    '''type : TYPEINT
+            | TYPECINT
+            | TYPEFLOAT
+            | TYPEBOOL
+            | TYPEVOID'''
+    p[0] = Type(lineno=p.lexer.lineno, noalias=False, ref=False, type=p[1])
 
 def p_vdecls(p):
     '''vdecls : vdecl COMMA vdecls
@@ -657,18 +939,19 @@ def main(input_args=None):
     with open(args.input) as input_file:
         ast = yacc_parser.parse(input_file.read())
 
+    ast.walk_ast()
+
     if args.emit_ast:
         yaml.representer.Representer.add_multi_representer(Node, yaml.representer.Representer.represent_dict)
-        yaml.representer.Representer.add_representer(Type, lambda s, d: yaml.representer.Representer.represent_str(s, str(d)))
         if args.o:
             with open(args.o, 'w') as ast_output_file:
                 yaml.dump(ast, ast_output_file, indent=2, sort_keys=False, explicit_start=True, explicit_end=True)
         else:
             print(yaml.dump(ast, indent=2, sort_keys=False, explicit_start=True, explicit_end=True))
     elif args.emit_llvm:
-        raise NotImplementedError('Not Implemented LLVM IR Dump')
+        Exit.NOT_IMPLEMENTED('Not Implemented LLVM IR Dump')
 
-    raise NotImplementedError('Not Implemented Compiling after AST Generation')
+    Exit.NOT_IMPLEMENTED('Not Implemented Compiling after AST Generation')
 
 
 
