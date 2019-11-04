@@ -44,7 +44,7 @@ class Exit(Enum):
                 print('Parsing Syntax Error at End of File')
 
         elif self is self.INVALID_VAR_TYPE_ERROR:
-            print('Invalid Type for {} in Line {}'.format(args[0], args[1]))
+            print('Invalid Type for {} in Line {}'.format(args[1], args[0]))
 
         elif self is self.TYPE_CAST_ERROR:
             print('Invalid Type Cast from {} to {} in Line {}'.format(args[2], args[1], args[0]))
