@@ -1,501 +1,383 @@
 ---
 name: prog
-lineno: 50
 externs:
   name: externs
-  lineno: 7
   externs:
   - name: extern
-    lineno: -1
     ret_type: int
     globid: arg
-    tdecls:
+    decls:
       name: tdecls
-      lineno: -1
-      types:
-      - int
+      tdecls:
+      - name: tdecl
+        type: int
   - name: extern
-    lineno: -1
     ret_type: float
     globid: argf
-    tdecls:
+    decls:
       name: tdecls
-      lineno: -1
-      types:
-      - int
+      tdecls:
+      - name: tdecl
+        type: int
   - name: extern
-    lineno: 2
     ret_type: int
     globid: getarg
-    tdecls:
+    decls:
       name: tdecls
-      lineno: 1
-      types:
-      - int
+      tdecls:
+      - name: tdecl
+        type: int
   - name: extern
-    lineno: 7
     ret_type: float
     globid: getargf
-    tdecls:
+    decls:
       name: tdecls
-      lineno: 2
-      types:
-      - int
+      tdecls:
+      - name: tdecl
+        type: int
 funcs:
   name: funcs
-  lineno: 50
   funcs:
   - name: func
-    lineno: 30
     ret_type: float
     globid: test1
-    vdecls:
+    decls:
       name: vdecls
-      lineno: 7
-      vars:
+      vdecls:
       - name: vdecl
-        lineno: 7
         type: noalias ref float
         var: $a
       - name: vdecl
-        lineno: 7
         type: noalias ref float
         var: $b
       - name: vdecl
-        lineno: 7
         type: float
         var: $c
     blk:
       name: blk
-      lineno: 30
       contents:
         name: stmts
-        lineno: 28
         stmts:
         - name: vardeclstmt
-          lineno: 9
           vdecl:
             name: vdecl
-            lineno: 8
             type: int
             var: $x
           exp:
             name: lit
-            lineno: 8
             type: int
             value: 0
         - name: vardeclstmt
-          lineno: 10
           vdecl:
             name: vdecl
-            lineno: 9
             type: int
             var: $xy
           exp:
             name: lit
-            lineno: 9
             type: int
             value: 1
         - name: vardeclstmt
-          lineno: 12
           vdecl:
             name: vdecl
-            lineno: 10
             type: int
             var: $xyz
           exp:
             name: lit
-            lineno: 10
             type: int
             value: 2
         - name: while
-          lineno: 27
           cond:
             name: binop
-            lineno: 12
             type: bool
             op: gt
             lhs:
               name: varval
-              lineno: 12
               type: int
               var: $xyz
             rhs:
               name: lit
-              lineno: 12
               type: int
               value: 8
           stmt:
             name: blk
-            lineno: 27
             contents:
               name: stmts
-              lineno: 25
               stmts:
               - name: expstmt
-                lineno: 14
                 exp:
                   name: assign
-                  lineno: 13
                   type: int
                   var: $x
                   exp:
                     name: caststmt
-                    lineno: 13
                     type: int
                     exp:
                       name: binop
-                      lineno: 13
                       type: float
                       op: sub
                       lhs:
                         name: binop
-                        lineno: 13
                         type: float
                         op: add
                         lhs:
                           name: varval
-                          lineno: 13
-                          type: noalias ref float
+                          type: float
                           var: $a
                         rhs:
                           name: varval
-                          lineno: 13
-                          type: noalias ref float
+                          type: float
                           var: $b
                       rhs:
                         name: binop
-                        lineno: 13
                         type: float
                         op: mul
                         lhs:
                           name: binop
-                          lineno: 13
                           type: float
                           op: div
                           lhs:
                             name: varval
-                            lineno: 13
                             type: float
                             var: $c
                           rhs:
                             name: varval
-                            lineno: 13
-                            type: noalias ref float
+                            type: float
                             var: $a
                         rhs:
                           name: varval
-                          lineno: 13
-                          type: noalias ref float
+                          type: float
                           var: $b
               - name: if
-                lineno: 18
                 cond:
                   name: binop
-                  lineno: 14
                   type: bool
                   op: eq
                   lhs:
                     name: varval
-                    lineno: 14
-                    type: noalias ref float
+                    type: float
                     var: $a
                   rhs:
                     name: varval
-                    lineno: 14
-                    type: noalias ref float
+                    type: float
                     var: $b
                 stmt:
                   name: expstmt
-                  lineno: 16
                   exp:
                     name: assign
-                    lineno: 15
                     type: int
                     var: $xy
                     exp:
                       name: caststmt
-                      lineno: 15
                       type: int
                       exp:
                         name: lit
-                        lineno: 15
                         type: int
                         value: 1
                 else_stmt:
                   name: expstmt
-                  lineno: 18
                   exp:
                     name: assign
-                    lineno: 17
                     type: int
                     var: $xy
                     exp:
                       name: lit
-                      lineno: 17
                       type: int
                       value: 0
               - name: if
-                lineno: 24
                 cond:
                   name: binop
-                  lineno: 18
                   type: bool
                   op: or
                   lhs:
                     name: binop
-                    lineno: 18
                     type: bool
                     op: and
                     lhs:
                       name: binop
-                      lineno: 18
                       type: bool
                       op: gt
                       lhs:
                         name: varval
-                        lineno: 18
                         type: int
                         var: $xyz
                       rhs:
                         name: uop
-                        lineno: 18
                         type: int
                         op: minus
                         exp:
                           name: varval
-                          lineno: 18
                           type: int
                           var: $xy
                     rhs:
                       name: binop
-                      lineno: 18
                       type: bool
                       op: lt
                       lhs:
                         name: varval
-                        lineno: 18
-                        type: noalias ref float
+                        type: float
                         var: $a
                       rhs:
                         name: varval
-                        lineno: 18
-                        type: noalias ref float
+                        type: float
                         var: $b
                   rhs:
                     name: binop
-                    lineno: 18
                     type: bool
                     op: eq
                     lhs:
                       name: varval
-                      lineno: 18
                       type: float
                       var: $c
                     rhs:
                       name: varval
-                      lineno: 18
-                      type: noalias ref float
+                      type: float
                       var: $a
                 stmt:
                   name: blk
-                  lineno: 20
                   contents:
                     name: stmts
-                    lineno: 20
                     stmts:
                     - name: ret
-                      lineno: 20
                       exp:
                         name: varval
-                        lineno: 19
-                        type: noalias ref float
+                        type: float
                         var: $a
                 else_stmt:
                   name: blk
-                  lineno: 24
                   contents:
                     name: stmts
-                    lineno: 22
                     stmts:
                     - name: expstmt
-                      lineno: 22
                       exp:
                         name: assign
-                        lineno: 21
-                        type: noalias ref float
+                        type: float
                         var: $a
                         exp:
                           name: flit
-                          lineno: 21
                           type: float
                           value: 8.5
               - name: expstmt
-                lineno: 25
                 exp:
                   name: assign
-                  lineno: 24
-                  type: noalias ref float
+                  type: float
                   var: $b
                   exp:
                     name: flit
-                    lineno: 24
                     type: float
                     value: 7.2
         - name: ret
-          lineno: 28
           exp:
             name: varval
-            lineno: 27
             type: float
             var: $c
   - name: func
-    lineno: 50
     ret_type: int
     globid: run
+    decls: null
     blk:
       name: blk
-      lineno: 50
       contents:
         name: stmts
-        lineno: 48
         stmts:
         - name: vardeclstmt
-          lineno: 32
           vdecl:
             name: vdecl
-            lineno: 31
             type: float
             var: $a
           exp:
             name: funccall
-            lineno: 31
             type: float
             globid: getargf
             params:
               name: exps
-              lineno: 31
               exps:
               - name: lit
-                lineno: 31
                 type: int
                 value: 0
         - name: vardeclstmt
-          lineno: 33
           vdecl:
             name: vdecl
-            lineno: 32
             type: float
             var: $b
           exp:
             name: funccall
-            lineno: 32
             type: float
             globid: getargf
             params:
               name: exps
-              lineno: 32
               exps:
               - name: lit
-                lineno: 32
                 type: int
                 value: 1
         - name: vardeclstmt
-          lineno: 35
           vdecl:
             name: vdecl
-            lineno: 33
             type: float
             var: $c
           exp:
             name: funccall
-            lineno: 33
             type: float
             globid: getargf
             params:
               name: exps
-              lineno: 33
               exps:
               - name: lit
-                lineno: 33
                 type: int
                 value: 2
         - name: printslit
-          lineno: 36
           string: 'initial:'
         - name: print
-          lineno: 37
           exp:
             name: varval
-            lineno: 36
             type: float
             var: $a
         - name: print
-          lineno: 38
           exp:
             name: varval
-            lineno: 37
             type: float
             var: $b
         - name: print
-          lineno: 40
           exp:
             name: varval
-            lineno: 38
             type: float
             var: $c
         - name: expstmt
-          lineno: 42
           exp:
             name: funccall
-            lineno: 40
             type: float
             globid: test1
             params:
               name: exps
-              lineno: 40
               exps:
               - name: varval
-                lineno: 40
                 type: float
                 var: $a
               - name: varval
-                lineno: 40
                 type: float
                 var: $b
               - name: varval
-                lineno: 40
                 type: float
                 var: $c
         - name: printslit
-          lineno: 43
           string: 'final:'
         - name: print
-          lineno: 44
           exp:
             name: varval
-            lineno: 43
             type: float
             var: $a
         - name: print
-          lineno: 45
           exp:
             name: varval
-            lineno: 44
             type: float
             var: $b
         - name: print
-          lineno: 47
           exp:
             name: varval
-            lineno: 45
             type: float
             var: $c
         - name: ret
-          lineno: 48
           exp:
             name: lit
-            lineno: 47
             type: int
             value: 0
 ...

@@ -1,414 +1,318 @@
 ---
 name: prog
-lineno: 42
 externs:
   name: externs
-  lineno: 4
   externs:
   - name: extern
-    lineno: -1
     ret_type: int
     globid: arg
-    tdecls:
+    decls:
       name: tdecls
-      lineno: -1
-      types:
-      - int
+      tdecls:
+      - name: tdecl
+        type: int
   - name: extern
-    lineno: -1
     ret_type: float
     globid: argf
-    tdecls:
+    decls:
       name: tdecls
-      lineno: -1
-      types:
-      - int
+      tdecls:
+      - name: tdecl
+        type: int
   - name: extern
-    lineno: 2
     ret_type: int
     globid: getarg
-    tdecls:
+    decls:
       name: tdecls
-      lineno: 1
-      types:
-      - int
+      tdecls:
+      - name: tdecl
+        type: int
   - name: extern
-    lineno: 4
     ret_type: float
     globid: getargf
-    tdecls:
+    decls:
       name: tdecls
-      lineno: 2
-      types:
-      - int
+      tdecls:
+      - name: tdecl
+        type: int
 funcs:
   name: funcs
-  lineno: 42
   funcs:
   - name: func
-    lineno: 16
     ret_type: int
     globid: fib
-    vdecls:
+    decls:
       name: vdecls
-      lineno: 4
-      vars:
+      vdecls:
       - name: vdecl
-        lineno: 4
         type: int
         var: $n
     blk:
       name: blk
-      lineno: 16
       contents:
         name: stmts
-        lineno: 14
         stmts:
         - name: if
-          lineno: 11
           cond:
             name: binop
-            lineno: 5
             type: bool
             op: lt
             lhs:
               name: varval
-              lineno: 5
               type: int
               var: $n
             rhs:
               name: lit
-              lineno: 5
               type: int
               value: 2
           stmt:
             name: if
-            lineno: 11
             cond:
               name: binop
-              lineno: 6
               type: bool
               op: eq
               lhs:
                 name: varval
-                lineno: 6
                 type: int
                 var: $n
               rhs:
                 name: lit
-                lineno: 6
                 type: int
                 value: 0
             stmt:
               name: ret
-              lineno: 8
               exp:
                 name: lit
-                lineno: 7
                 type: int
                 value: 0
             else_stmt:
               name: ret
-              lineno: 11
               exp:
                 name: lit
-                lineno: 9
                 type: int
                 value: 1
+          else_stmt: null
         - name: vardeclstmt
-          lineno: 12
           vdecl:
             name: vdecl
-            lineno: 11
             type: int
             var: $a
           exp:
             name: funccall
-            lineno: 11
             type: int
             globid: fib
             params:
               name: exps
-              lineno: 11
               exps:
               - name: binop
-                lineno: 11
                 type: int
                 op: sub
                 lhs:
                   name: varval
-                  lineno: 11
                   type: int
                   var: $n
                 rhs:
                   name: lit
-                  lineno: 11
                   type: int
                   value: 1
         - name: vardeclstmt
-          lineno: 13
           vdecl:
             name: vdecl
-            lineno: 12
             type: int
             var: $b
           exp:
             name: funccall
-            lineno: 12
             type: int
             globid: fib
             params:
               name: exps
-              lineno: 12
               exps:
               - name: binop
-                lineno: 12
                 type: int
                 op: sub
                 lhs:
                   name: varval
-                  lineno: 12
                   type: int
                   var: $n
                 rhs:
                   name: lit
-                  lineno: 12
                   type: int
                   value: 2
         - name: ret
-          lineno: 14
           exp:
             name: binop
-            lineno: 13
             type: int
             op: add
             lhs:
               name: varval
-              lineno: 13
               type: int
               var: $a
             rhs:
               name: varval
-              lineno: 13
               type: int
               var: $b
   - name: func
-    lineno: 20
     ret_type: void
     globid: inc
-    vdecls:
+    decls:
       name: vdecls
-      lineno: 16
-      vars:
+      vdecls:
       - name: vdecl
-        lineno: 16
         type: ref int
         var: $n
     blk:
       name: blk
-      lineno: 20
       contents:
         name: stmts
-        lineno: 18
         stmts:
         - name: expstmt
-          lineno: 18
           exp:
             name: assign
-            lineno: 17
-            type: ref int
+            type: int
             var: $n
             exp:
               name: binop
-              lineno: 17
               type: int
               op: add
               lhs:
                 name: varval
-                lineno: 17
-                type: ref int
+                type: int
                 var: $n
               rhs:
                 name: lit
-                lineno: 17
                 type: int
                 value: 1
   - name: func
-    lineno: 26
     ret_type: void
     globid: things
-    vdecls:
+    decls:
       name: vdecls
-      lineno: 20
-      vars:
+      vdecls:
       - name: vdecl
-        lineno: 20
         type: ref int
         var: $n
     blk:
       name: blk
-      lineno: 26
       contents:
         name: stmts
-        lineno: 24
         stmts:
         - name: while
-          lineno: 24
           cond:
             name: uop
-            lineno: 21
             type: bool
             op: not
             exp:
               name: binop
-              lineno: 21
               type: bool
               op: gt
               lhs:
                 name: varval
-                lineno: 21
-                type: ref int
+                type: int
                 var: $n
               rhs:
                 name: lit
-                lineno: 21
                 type: int
                 value: 100
           stmt:
             name: blk
-            lineno: 24
             contents:
               name: stmts
-              lineno: 23
               stmts:
               - name: expstmt
-                lineno: 23
                 exp:
                   name: assign
-                  lineno: 22
-                  type: ref int
+                  type: int
                   var: $n
                   exp:
                     name: binop
-                    lineno: 22
                     type: int
                     op: sub
                     lhs:
                       name: binop
-                      lineno: 22
                       type: int
                       op: mul
                       lhs:
                         name: varval
-                        lineno: 22
-                        type: ref int
+                        type: int
                         var: $n
                       rhs:
                         name: varval
-                        lineno: 22
-                        type: ref int
+                        type: int
                         var: $n
                     rhs:
                       name: lit
-                      lineno: 22
                       type: int
                       value: 2
   - name: func
-    lineno: 42
     ret_type: int
     globid: run
+    decls: null
     blk:
       name: blk
-      lineno: 42
       contents:
         name: stmts
-        lineno: 41
         stmts:
         - name: printslit
-          lineno: 28
           string: 'fib(5):'
         - name: vardeclstmt
-          lineno: 29
           vdecl:
             name: vdecl
-            lineno: 28
             type: int
             var: $val
           exp:
             name: funccall
-            lineno: 28
             type: int
             globid: fib
             params:
               name: exps
-              lineno: 28
               exps:
               - name: lit
-                lineno: 28
                 type: int
                 value: 5
         - name: print
-          lineno: 31
           exp:
             name: varval
-            lineno: 29
             type: int
             var: $val
         - name: printslit
-          lineno: 32
           string: 'fib(5)+1:'
         - name: expstmt
-          lineno: 33
           exp:
             name: funccall
-            lineno: 32
             type: void
             globid: inc
             params:
               name: exps
-              lineno: 32
               exps:
               - name: varval
-                lineno: 32
                 type: int
                 var: $val
         - name: print
-          lineno: 35
           exp:
             name: varval
-            lineno: 33
             type: int
             var: $val
         - name: printslit
-          lineno: 36
           string: 'something else:'
         - name: expstmt
-          lineno: 37
           exp:
             name: funccall
-            lineno: 36
             type: void
             globid: things
             params:
               name: exps
-              lineno: 36
               exps:
               - name: varval
-                lineno: 36
                 type: int
                 var: $val
         - name: print
-          lineno: 40
           exp:
             name: varval
-            lineno: 37
             type: int
             var: $val
         - name: ret
-          lineno: 41
           exp:
             name: lit
-            lineno: 40
             type: int
             value: 0
 ...
