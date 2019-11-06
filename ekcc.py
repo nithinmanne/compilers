@@ -879,7 +879,7 @@ def p_error(p):
     Exit.PARSING_ERROR(p)
 
 
-yacc_parser = yacc.yacc(debug=True)
+yacc_parser = yacc.yacc(debug=False)
 
 
 
