@@ -59,7 +59,7 @@ class Exit(Enum):
             print('Redeclaration of {} in Line {}'.format(args[1], args[0]))
 
         elif self is self.RUN_FUNCTION_MISSING:
-            print('int run() Function missing')
+            print('Invalid/Missing int run() Function')
 
         elif self is self.INVALID_OPERATION_TYPE:
             print('Invalid Type for {} in Line {}'.format(args[1], args[0]))
@@ -167,6 +167,8 @@ class Prog(Node):
         self.externs = self.externs + arg
         self.externs.walk_ast(scope.copy())
         scope = self.externs.scope
+        if 'run' in scope:
+            Exit.RUN_FUNCTION_MISSING()
         self.funcs.walk_ast(scope.copy())
         scope = self.funcs.scope
         try:
@@ -626,8 +628,7 @@ def t_error(t):
     Exit.LEXING_ERROR(t)
 
 
-lexer = lex.lex()
-
+lex.lex()
 
 
 # Parsing rules
