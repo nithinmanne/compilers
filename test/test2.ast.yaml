@@ -89,7 +89,7 @@ funcs:
           cond:
             name: binop
             type: bool
-            op: gt
+            op: '>'
             lhs:
               name: varval
               type: int
@@ -114,11 +114,11 @@ funcs:
                     exp:
                       name: binop
                       type: float
-                      op: sub
+                      op: '-'
                       lhs:
                         name: binop
                         type: float
-                        op: add
+                        op: +
                         lhs:
                           name: varval
                           type: float
@@ -130,11 +130,11 @@ funcs:
                       rhs:
                         name: binop
                         type: float
-                        op: mul
+                        op: '*'
                         lhs:
                           name: binop
                           type: float
-                          op: div
+                          op: /
                           lhs:
                             name: varval
                             type: float
@@ -151,7 +151,7 @@ funcs:
                 cond:
                   name: binop
                   type: bool
-                  op: eq
+                  op: ==
                   lhs:
                     name: varval
                     type: float
@@ -187,15 +187,15 @@ funcs:
                 cond:
                   name: binop
                   type: bool
-                  op: or
+                  op: '||'
                   lhs:
                     name: binop
                     type: bool
-                    op: and
+                    op: '&&'
                     lhs:
                       name: binop
                       type: bool
-                      op: gt
+                      op: '>'
                       lhs:
                         name: varval
                         type: int
@@ -203,7 +203,7 @@ funcs:
                       rhs:
                         name: uop
                         type: int
-                        op: minus
+                        op: '-'
                         exp:
                           name: varval
                           type: int
@@ -211,7 +211,7 @@ funcs:
                     rhs:
                       name: binop
                       type: bool
-                      op: lt
+                      op: <
                       lhs:
                         name: varval
                         type: float
@@ -223,7 +223,7 @@ funcs:
                   rhs:
                     name: binop
                     type: bool
-                    op: eq
+                    op: ==
                     lhs:
                       name: varval
                       type: float

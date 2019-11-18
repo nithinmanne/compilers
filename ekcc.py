@@ -390,17 +390,17 @@ class Binop(Exp):
     def _set_type(self):
         if self.lhs.type == self.rhs.type:
             try:
-                if self.op in ['mul', 'div', 'add', 'sub']:
+                if self.op in ['*', '/', '+', '-']:
                     if self.lhs.type not in ['int', 'cint', 'float']:
                         raise TypeError
                     self.type = self.lhs.type
-                elif self.op in ['eq']:
+                elif self.op in ['==']:
                     self.type = 'bool'
-                elif self.op in ['lt', 'gt']:
+                elif self.op in ['<', '>']:
                     if self.lhs.type not in ['int', 'cint', 'float']:
                         raise TypeError
                     self.type = 'bool'
-                elif self.op in ['and', 'or']:
+                elif self.op in ['&&', '||']:
                     if self.lhs.type not in ['bool']:
                         raise TypeError
                     self.type = 'bool'
@@ -425,10 +425,10 @@ class Uop(Exp):
         self.exp = exp
     def _set_type(self):
         try:
-            if self.op in ['minus']:
+            if self.op in ['-']:
                 if self.exp.type not in ['int', 'cint', 'float']:
                     raise TypeError
-            elif self.op in ['not']:
+            elif self.op in ['!']:
                 if self.exp.type not in ['bool']:
                     raise TypeError
             self.type = self.exp.type
@@ -645,22 +645,6 @@ precedence = (
     ('right', 'UMINUS', 'BITNOT', 'TYPECAST'),
     )
 
-binopmap = {
-    t_TIMES.replace('\\',''): 'mul',
-    t_DIVIDE.replace('\\',''): 'div',
-    t_PLUS.replace('\\',''): 'add',
-    t_MINUS.replace('\\',''): 'sub',
-    t_EQUAL.replace('\\',''): 'eq',
-    t_LESS.replace('\\',''): 'lt',
-    t_GREATER.replace('\\',''): 'gt',
-    t_BITAND.replace('\\',''): 'and',
-    t_BITOR.replace('\\',''): 'or',
-}
-uopmap = {
-    t_MINUS.replace('\\',''): 'minus',
-    t_BITNOT.replace('\\',''): 'not',
-}
-
 def p_prog(p):
     '''prog : externs funcs
             | funcs'''
@@ -793,19 +777,19 @@ def p_arithop(p):
                | exp DIVIDE exp
                | exp PLUS exp
                | exp MINUS exp'''
-    p[0] = Binop(lineno=p.lexer.lineno, op=binopmap[p[2]], lhs=p[1], rhs=p[3])
+    p[0] = Binop(lineno=p.lexer.lineno, op=p[2], lhs=p[1], rhs=p[3])
 def p_logicop(p):
     '''logicop : exp EQUAL exp
                | exp LESS exp
                | exp GREATER exp
                | exp BITAND exp
                | exp BITOR exp'''
-    p[0] = Binop(lineno=p.lexer.lineno, op=binopmap[p[2]], lhs=p[1], rhs=p[3])
+    p[0] = Binop(lineno=p.lexer.lineno, op=p[2], lhs=p[1], rhs=p[3])
 
 def p_uop(p):
     '''uop : MINUS exp %prec UMINUS
            | BITNOT exp'''
-    p[0] = Uop(lineno=p.lexer.lineno, op=uopmap[p[1]], exp=p[2])
+    p[0] = Uop(lineno=p.lexer.lineno, op=p[1], exp=p[2])
 
 def p_lit_lit(p):
     'lit : NUMBER'
@@ -816,7 +800,7 @@ def p_lit_flit(p):
 def p_lit_blit(p):
     '''lit : TRUE
            | FALSE'''
-    p[0] = Blit(lineno=p.lexer.lineno, value=p[1])
+    p[0] = Blit(lineno=p.lexer.lineno, value={'false': 0, 'true': 1}[p[1]])
 def p_slit(p):
     'slit : STRING'
     p[0] = p[1]
