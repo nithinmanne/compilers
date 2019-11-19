@@ -3,12 +3,13 @@ Compilers Assignment Repository
 
 ## Usage
 ```
-python3 ekcc.py [-h|-?] [-v] [-O] [-emit-ast|-emit-llvm] -o <output-file> <input-file>
+python3 ekcc.py [-h|-?] [-v] [-O] [-emit-ast|-emit-llvm] [-jit] [-o <output-file>] <input-file> [args]
 
 The Extended-Kaleidoscope Language Compiler
 
 positional arguments:
   input-file      Input .ek File to Compile
+  args            Optional arguments when performing JIT and execution
 
 optional arguments:
   -h, -?          Show this help message and exit
@@ -16,6 +17,7 @@ optional arguments:
   -O              Enable Optimization
   -emit-ast       Dump AST in YAML Format to the Output File
   -emit-llvm      Dump LLVM IR to the Output File
+  -jit            Run the compiled Code
   -o output-file  Output File to emit AST or LLVM IR
 ```
 

@@ -1,6 +1,7 @@
 import os
 import sys
 import argparse
+import subprocess
 from enum import Enum
 from abc import ABC, abstractmethod
 from collections import OrderedDict
@@ -96,6 +97,7 @@ class Node(ABC):
         return {'void': ir.VoidType(),
                 'char': ir.IntType(8),
                 'char*': ir.IntType(8).as_pointer(),
+                'char**': ir.IntType(8).as_pointer().as_pointer(),
                 'int': ir.IntType(32),
                 'cint': ir.IntType(32),
                 'float': ir.FloatType(),
@@ -129,8 +131,8 @@ class Decl(Node):
         self.type = type
     @property
     def ir_type(self):
-        if not self.ref: return super().ir_type
-        else: return super().ir_type.as_pointer()
+        if hasattr(self, 'ref') and self.ref: return super().ir_type.as_pointer()
+        else: return super().ir_type
     def items(self):
         return super().items() + [('type', 'noalias '*self.noalias +\
                                    'ref '*self.ref + self.type)]
@@ -207,7 +209,6 @@ class Prog(Node):
         scope = self.externs.scope
         if 'run' in scope:
             Exit.RUN_FUNCTION_MISSING()
-        self.make_arg_externs(scope, jit)
         self.funcs.walk_ast(scope.copy(), self.module)
         scope = self.funcs.scope
         try:
@@ -216,10 +217,52 @@ class Prog(Node):
         except ScopeException:
             Exit.RUN_FUNCTION_MISSING()
         super().walk_ast(scope.copy(), builder)
+        self.make_arg_externs(scope, jit)
     def make_arg_externs(self, scope, jit):
         '''Create arg and argf Funtions in case of JIT, and also main when compiling'''
         if jit is None:
-            pass
+            self.type = 'char**'
+            global_argv_constant = ir.Constant(self.ir_type, None)
+            global_argv = ir.GlobalVariable(scope.module, self.ir_type, 'global_argv')
+            global_argv.initializer = global_argv_constant
+            main_func_type = ir.FunctionType(ir.IntType(32), [ir.IntType(32), self.ir_type])
+            main_func = ir.Function(scope.module, main_func_type, name='main')
+            argc, argv = main_func.args
+            main_block = main_func.append_basic_block()
+            main_builder = ir.IRBuilder(main_block)
+            main_builder.store(argv, global_argv)
+            run_ret = main_builder.call(scope.get_ptr('run'), [])
+            main_builder.ret(run_ret)
+            self.type = 'char*'
+            atoi_type = ir.FunctionType(ir.IntType(32), [self.ir_type])
+            atoi = ir.Function(scope.module, atoi_type, name='atoi')
+            atof_type = ir.FunctionType(ir.DoubleType(), [self.ir_type])
+            atof = ir.Function(scope.module, atof_type, name='atof')
+            for name, type_str in zip(['arg', 'argf'], ['int', 'float']):
+                try:
+                    func = scope.get_ptr(name)
+                except:
+                    continue
+                try:
+                    if scope(name, [Decl(lineno=-1, noalias=False, ref=False, type='int')]) != type_str:
+                        raise ScopeException
+                except ScopeException:
+                    Exit.INVALID_EXTERN_BUILTIN(name)
+                arg, = func.args
+                entry_block = func.append_basic_block()
+                func_builder = ir.IRBuilder(entry_block)
+                argv = func_builder.load(global_argv)
+                index = func_builder.add(arg, ir.Constant(ir.IntType(32), 1))
+                argv_index = func_builder.gep(argv, [index])
+                argv_n_str = func_builder.load(argv_index)
+                if type_str in ['int']:
+                    atoival = func_builder.call(atoi, [argv_n_str])
+                    func_builder.ret(atoival)
+                elif type_str in ['float']:
+                    atofval = func_builder.call(atof, [argv_n_str])
+                    self.type = 'float'
+                    fval = func_builder.fptrunc(atofval, self.ir_type)
+                    func_builder.ret(fval)
         else:
             for name, type, type_str in zip(['arg', 'argf'], [int, float], ['int', 'float']):
                 try:
@@ -411,7 +454,7 @@ class Print(Stmt):
         self.type = 'char'
         fmt_ir_type = ir.ArrayType(self.ir_type, len(fmt))
         fmt_constant = ir.Constant(fmt_ir_type, bytearray(fmt.encode()))
-        global_str = ir.GlobalVariable(self.scope.module, fmt_ir_type, 'string'+str(id(self)))
+        global_str = ir.GlobalVariable(self.scope.module, fmt_ir_type, self.scope.module.get_unique_name('string'))
         global_str.initializer = fmt_constant
         self.type = 'char*'
         fmt_arg = builder.bitcast(global_str, self.ir_type)
@@ -438,7 +481,7 @@ class Printslit(Stmt):
         self.type = 'char'
         self.string_ir_type = ir.ArrayType(self.ir_type, len(self.string))
         self.string_constant = ir.Constant(self.string_ir_type, bytearray(self.string.encode()))
-        self.global_str = ir.GlobalVariable(self.scope.module, self.string_ir_type, 'string'+str(id(self)))
+        self.global_str = ir.GlobalVariable(self.scope.module, self.string_ir_type, self.scope.module.get_unique_name('string'))
         self.global_str.initializer = self.string_constant
         self.type = 'char*'
         printf = self.scope.get_ptr('printf')
@@ -1153,7 +1196,12 @@ def main(input_args=None):
         res = cfunc()
         sys.exit(res)
     else:
-        pass
+        if args.o:
+            object_file = args.o + '.exe'
+        else:
+            object_file = args.input + '.exe'
+        proc = subprocess.Popen(['gcc', '-o', object_file, '-x', 'assembler', '-'], stdin=subprocess.PIPE)
+        proc.communicate(target_machine.emit_assembly(mod).encode())
 
 if __name__=='__main__':
     main()
