@@ -5,6 +5,14 @@ externs:
   externs:
   - name: extern
     ret_type: int
+    globid: printf
+    decls:
+      name: tdecls
+      tdecls:
+      - name: tdecl
+        type: char*
+  - name: extern
+    ret_type: int
     globid: arg
     decls:
       name: tdecls
@@ -253,7 +261,7 @@ funcs:
         name: stmts
         stmts:
         - name: printslit
-          string: 'fib(5):'
+          string: "fib(5):\n\0"
         - name: vardeclstmt
           vdecl:
             name: vdecl
@@ -275,7 +283,7 @@ funcs:
             type: int
             var: $val
         - name: printslit
-          string: 'fib(5)+1:'
+          string: "fib(5)+1:\n\0"
         - name: expstmt
           exp:
             name: funccall
@@ -293,7 +301,7 @@ funcs:
             type: int
             var: $val
         - name: printslit
-          string: 'something else:'
+          string: "something else:\n\0"
         - name: expstmt
           exp:
             name: funccall

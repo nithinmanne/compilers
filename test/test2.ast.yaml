@@ -5,6 +5,14 @@ externs:
   externs:
   - name: extern
     ret_type: int
+    globid: printf
+    decls:
+      name: tdecls
+      tdecls:
+      - name: tdecl
+        type: char*
+  - name: extern
+    ret_type: int
     globid: arg
     decls:
       name: tdecls
@@ -325,7 +333,7 @@ funcs:
                 type: int
                 value: 2
         - name: printslit
-          string: 'initial:'
+          string: "initial:\n\0"
         - name: print
           exp:
             name: varval
@@ -359,7 +367,7 @@ funcs:
                 type: float
                 var: $c
         - name: printslit
-          string: 'final:'
+          string: "final:\n\0"
         - name: print
           exp:
             name: varval
