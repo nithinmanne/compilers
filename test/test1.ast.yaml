@@ -27,22 +27,6 @@ externs:
       tdecls:
       - name: tdecl
         type: int
-  - name: extern
-    ret_type: int
-    globid: getarg
-    decls:
-      name: tdecls
-      tdecls:
-      - name: tdecl
-        type: int
-  - name: extern
-    ret_type: float
-    globid: getargf
-    decls:
-      name: tdecls
-      tdecls:
-      - name: tdecl
-        type: int
 funcs:
   name: funcs
   funcs:

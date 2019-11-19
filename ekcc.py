@@ -24,6 +24,7 @@ class Exit(Enum):
     REDECLARED_NAME_ERROR = 8
     RUN_FUNCTION_MISSING = 9
     INVALID_OPERATION_TYPE = 10
+    INVALID_EXTERN_BUILTIN = 11
 
     def _is_error(self):
         if self is self.SUCCESS: return False
@@ -67,6 +68,9 @@ class Exit(Enum):
         elif self is self.INVALID_OPERATION_TYPE:
             print('Invalid Type for {} in Line {}'.format(args[1], args[0]))
 
+        elif self is self.INVALID_EXTERN_BUILTIN:
+            print('Invalid Declaration for builtin {}'.format(args[0]))
+
 
 
 
@@ -102,9 +106,11 @@ class Node(ABC):
         return [('name', self.name)]
 
 class Stmt(Node):
+    '''Common Code and Enforced Properties for Statements'''
     pass
 
 class Exp(Node):
+    '''Common Code and Enforced Properties for Expressions'''
     @abstractmethod
     def _set_type(self):
         pass
@@ -115,6 +121,7 @@ class Exp(Node):
         return super().items() + [('type', self.type)]
 
 class Decl(Node):
+    '''Common Code to initlaize types'''
     def __init__(self, lineno, noalias, ref, type):
         super().__init__(lineno)
         self.noalias = noalias
@@ -129,6 +136,7 @@ class Decl(Node):
                                    'ref '*self.ref + self.type)]
 
 class Callable(Node):
+    '''Common Code between an Extern and a Fucntion'''
     def __init__(self, lineno, ret_type, globid, decls, var_arg=False):
         super().__init__(lineno)
         self.ret_type = ret_type
@@ -156,6 +164,7 @@ class Callable(Node):
                                   ('decls', self.decls)]
 
 class Nodelist(Node):
+    '''Container for sharing common code between sequence of nodes, like stmts, funcs, externs'''
     def __init__(self, lineno, node):
         super().__init__(lineno)
         self.nodelist = [node]
@@ -181,27 +190,24 @@ class Prog(Node):
         super().__init__(lineno)
         self.externs = externs
         self.funcs = funcs
-    def walk_ast(self, scope=None, builder='main'):
+    def walk_ast(self, scope=None, builder='main', jit=None):
         if not scope:
             scope = Scope()
         self.module = ir.Module(name=builder)
         scope.module = self.module
         printf = Extern(lineno=-1, ret_type='int', globid='printf',
-                        decls=Tdecls(lineno=-1, node=Tdecl(lineno=-1, noalias=False, ref=False, type='char*')), var_arg=True)
-        arg = Extern(lineno=-1, ret_type='int', globid='arg',
-                     decls=Tdecls(lineno=-1, node=Tdecl(lineno=-1, noalias=False, ref=False, type='int')))
-        argf = Extern(lineno=-1, ret_type='float', globid='argf',
-                      decls=Tdecls(lineno=-1, node=Tdecl(lineno=-1, noalias=False, ref=False, type='int')))
+                        decls=Tdecls(lineno=-1, node=Tdecl(lineno=-1, noalias=False,
+                                                           ref=False, type='char*')),
+                        var_arg=True)
         if self.externs:
-            self.externs = self.externs + argf
+            self.externs = self.externs + printf
         else:
-            self.externs = Externs(lineno=-1, node=argf)
-        self.externs = self.externs + arg
-        self.externs = self.externs + printf
+            self.externs = Externs(lineno=-1, node=argf) + printf
         self.externs.walk_ast(scope.copy(), self.module)
         scope = self.externs.scope
         if 'run' in scope:
             Exit.RUN_FUNCTION_MISSING()
+        self.make_arg_externs(scope, jit)
         self.funcs.walk_ast(scope.copy(), self.module)
         scope = self.funcs.scope
         try:
@@ -210,6 +216,35 @@ class Prog(Node):
         except ScopeException:
             Exit.RUN_FUNCTION_MISSING()
         super().walk_ast(scope.copy(), builder)
+    def make_arg_externs(self, scope, jit):
+        '''Create arg and argf Funtions in case of JIT, and also main when compiling'''
+        if jit is None:
+            pass
+        else:
+            for name, type, type_str in zip(['arg', 'argf'], [int, float], ['int', 'float']):
+                try:
+                    func = scope.get_ptr(name)
+                except:
+                    continue
+                try:
+                    if scope(name, [Decl(lineno=-1, noalias=False, ref=False, type='int')]) != type_str:
+                        raise ScopeException
+                except ScopeException:
+                    Exit.INVALID_EXTERN_BUILTIN(name)
+                arg, = func.args
+                entry_block = func.append_basic_block()
+                func_builder = ir.IRBuilder(entry_block)
+                default_block = func_builder.append_basic_block()
+                self.type = type_str
+                with func_builder.goto_block(default_block):
+                    func_builder.ret(self.ir_type(0))
+                switch = func_builder.switch(arg, default_block)
+                for i, val in enumerate(jit):
+                    switch_block = func_builder.append_basic_block()
+                    with func_builder.goto_block(switch_block):
+                        try: func_builder.ret(self.ir_type(type(val)))
+                        except: func_builder.ret(self.ir_type(type(0)))
+                    switch.add_case(i, switch_block)
     def items(self):
         return super().items() + [('externs', self.externs),
                                   ('funcs', self.funcs)]
@@ -648,6 +683,8 @@ class Vdecl(Decl):
         if isinstance(exp, ir.Argument):
             if self.ref:
                 self.ptr = exp
+                if self.noalias:
+                    exp.add_attribute('noalias')
             else:
                 self.ptr = self.builder.alloca(self.ir_type, name=self.var)
                 self.builder.store(exp, self.ptr)
@@ -666,6 +703,7 @@ class Tdecl(Decl):
 
 
 class Scope:
+    '''Store Types, Pointers and other Information of variables in current scope'''
     def __init__(self, callables=None, variables=None, pointers=None):
         if callables: self.callables = callables.copy()
         else: self.callables = {}
@@ -711,10 +749,8 @@ class Scope:
         if args is None: return []
         return [arg.ptr if decl.ref else arg.ir for decl, arg in zip(call.decls, args)]
 
-
-
-
 class ScopeException(Exception):
+    '''Exception for Out of Scope'''
     pass
 
 
@@ -1045,7 +1081,7 @@ yacc_parser = yacc.yacc(debug=False)
 def main(input_args=None):
     parser = argparse.ArgumentParser(description='The Extended-Kaleidoscope Language Compiler',
                                      add_help=False,
-                                     usage='%(prog)s [-h|-?] [-v] [-O] [-emit-ast|-emit-llvm] -o <output-file> <input-file>',
+                                     usage='%(prog)s [-h|-?] [-v] [-O] [-emit-ast|-emit-llvm] [-jit] [-o <output-file>] <input-file> [args]',
                                      epilog='Authors: Naga Nithin Manne & Dipti Sengupta')
 
     parser.add_argument('-h', '-?', action='help', default=argparse.SUPPRESS,
@@ -1059,16 +1095,21 @@ def main(input_args=None):
     emit_group.add_argument('-emit-ast', action='store_true', help='Dump AST in YAML Format to the Output File')
     emit_group.add_argument('-emit-llvm', action='store_true', help='Dump LLVM IR to the Output File')
 
+    parser.add_argument('-jit', action='store_true', help='Run the compiled Code')
+
     parser.add_argument('-o', metavar='output-file', help='Output File to emit AST or LLVM IR')
 
     parser.add_argument('input', metavar='input-file', help='Input .ek File to Compile')
+
+    parser.add_argument('args', metavar='args', nargs='*', default=None, help='Optional arguments when performing JIT and execution')
 
     args = parser.parse_args(args=input_args)
 
     with open(args.input) as input_file:
         ast = yacc_parser.parse(input_file.read())
 
-    ast.walk_ast(builder=os.path.basename(args.input))
+    if args.jit: ast.walk_ast(builder=os.path.basename(args.input), jit=args.args)
+    else: ast.walk_ast(builder=os.path.basename(args.input), jit=None)
 
     if args.emit_ast:
         yaml.representer.Representer.add_multi_representer(Node, yaml.representer.Representer.represent_dict)
@@ -1084,48 +1125,35 @@ def main(input_args=None):
         else:
             print(ast.module)
 
-    #llvm_exec(ast)
-
-def llvm_exec(ast):
     llvm.initialize()
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()
     llvm_ir = str(ast.module)
-    def create_execution_engine():
-        """
-        Create an ExecutionEngine suitable for JIT code generation on
-        the host CPU.  The engine is reusable for an arbitrary number of
-        modules.
-        """
-        # Create a target machine representing the host
-        target = llvm.Target.from_default_triple()
-        target_machine = target.create_target_machine()
-        # And an execution engine with an empty backing module
-        backing_mod = llvm.parse_assembly("")
-        engine = llvm.create_mcjit_compiler(backing_mod, target_machine)
-        return engine
-    def compile_ir(engine, llvm_ir):
-        """
-        Compile the LLVM IR string with the given engine.
-        The compiled module object is returned.
-        """
-        # Create a LLVM module object from the IR
-        mod = llvm.parse_assembly(llvm_ir)
-        mod.verify()
-        # Now add the module and make sure it is ready for execution
-        engine.add_module(mod)
-        engine.finalize_object()
-        engine.run_static_constructors()
-        return mod
 
-    engine = create_execution_engine()
-    mod = compile_ir(engine, llvm_ir)
-    func_ptr = engine.get_function_address('run')
-    from ctypes import CFUNCTYPE, c_int32
-    cfunc = CFUNCTYPE(c_int32)(func_ptr)
-    res = cfunc()
-    print('res:',res)
+    # Create a target machine representing the host
+    target = llvm.Target.from_default_triple()
+    target_machine = target.create_target_machine()
+    # And an execution engine with an empty backing module
+    backing_mod = llvm.parse_assembly("")
+    engine = llvm.create_mcjit_compiler(backing_mod, target_machine)
 
+
+    # Create a LLVM module object from the IR
+    mod = llvm.parse_assembly(llvm_ir)
+    mod.verify()
+    # Now add the module and make sure it is ready for execution
+    engine.add_module(mod)
+    engine.finalize_object()
+    engine.run_static_constructors()
+
+    if args.jit:
+        func_ptr = engine.get_function_address('run')
+        from ctypes import CFUNCTYPE, c_int32
+        cfunc = CFUNCTYPE(c_int32)(func_ptr)
+        res = cfunc()
+        sys.exit(res)
+    else:
+        pass
 
 if __name__=='__main__':
     main()

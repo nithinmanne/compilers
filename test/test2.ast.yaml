@@ -27,22 +27,6 @@ externs:
       tdecls:
       - name: tdecl
         type: int
-  - name: extern
-    ret_type: int
-    globid: getarg
-    decls:
-      name: tdecls
-      tdecls:
-      - name: tdecl
-        type: int
-  - name: extern
-    ret_type: float
-    globid: getargf
-    decls:
-      name: tdecls
-      tdecls:
-      - name: tdecl
-        type: int
 funcs:
   name: funcs
   funcs:
@@ -231,15 +215,31 @@ funcs:
                   rhs:
                     name: binop
                     type: bool
-                    op: ==
+                    op: '||'
                     lhs:
-                      name: varval
-                      type: float
-                      var: $c
+                      name: binop
+                      type: bool
+                      op: ==
+                      lhs:
+                        name: varval
+                        type: float
+                        var: $c
+                      rhs:
+                        name: varval
+                        type: float
+                        var: $a
                     rhs:
-                      name: varval
-                      type: float
-                      var: $a
+                      name: binop
+                      type: bool
+                      op: ==
+                      lhs:
+                        name: varval
+                        type: int
+                        var: $x
+                      rhs:
+                        name: lit
+                        type: int
+                        value: 0
                 stmt:
                   name: blk
                   contents:
@@ -295,7 +295,7 @@ funcs:
           exp:
             name: funccall
             type: float
-            globid: getargf
+            globid: argf
             params:
               name: exps
               exps:
@@ -310,7 +310,7 @@ funcs:
           exp:
             name: funccall
             type: float
-            globid: getargf
+            globid: argf
             params:
               name: exps
               exps:
@@ -325,7 +325,7 @@ funcs:
           exp:
             name: funccall
             type: float
-            globid: getargf
+            globid: argf
             params:
               name: exps
               exps:

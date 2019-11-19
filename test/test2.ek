@@ -1,5 +1,5 @@
-extern int getarg(int);
-extern float getargf(int);
+extern int arg(int);
+extern float argf(int);
 
 # This function has two noalias parameters: $a and $b. During any execution of
 # the function in which both are accessed they must point to different
@@ -10,12 +10,12 @@ def float test1(noalias ref float $a, noalias ref float $b, float $c) {
   int $xyz = 2;
 
   while ($xyz > 8) {
-    $x = [int]($a + $b - $c / $a * $b);
+    $x = [int] ($a + $b - $c / $a * $b);
     if ($a == $b)
       $xy = [int] 1;
     else
       $xy = 0;
-    if ($xyz > -$xy && $a < $b || ($c == $a)) {
+    if ($xyz > -$xy && $a < $b || ($c == $a || $x == 0)) {
       return $a;
     } else {
       $a = 8.5;
@@ -28,9 +28,9 @@ def float test1(noalias ref float $a, noalias ref float $b, float $c) {
 }
 
 def int run () {
-  float $a = getargf(0);
-  float $b = getargf(1);
-  float $c = getargf(2);
+  float $a = argf(0);
+  float $b = argf(1);
+  float $c = argf(2);
 
   print "initial:";
   print $a;
