@@ -1,3 +1,4 @@
+import os
 import sys
 import argparse
 from enum import Enum
@@ -6,6 +7,8 @@ from collections import OrderedDict
 import yaml
 import ply.lex as lex
 import ply.yacc as yacc
+from llvmlite import ir
+import llvmlite.binding as llvm
 
 # Class Definitions
 
@@ -79,8 +82,20 @@ class Node(ABC):
         self.lineno = lineno
     def _set_scope(self, scope):
         self.scope = scope
-    def walk_ast(self, scope):
+    def _set_ir_builder(self, builder):
+        self.builder = builder
+    def walk_ast(self, scope, builder):
         self._set_scope(scope.copy())
+        self._set_ir_builder(builder)
+    @property
+    def ir_type(self):
+        return {'void': ir.VoidType(),
+                'char': ir.IntType(8),
+                'char*': ir.IntType(8).as_pointer(),
+                'int': ir.IntType(32),
+                'cint': ir.IntType(32),
+                'float': ir.FloatType(),
+                'bool': ir.IntType(1)}[self.type]
     @abstractmethod
     def items(self):
         return [('name', self.name)]
@@ -92,8 +107,8 @@ class Exp(Node):
     @abstractmethod
     def _set_type(self):
         pass
-    def walk_ast(self, scope):
-        super().walk_ast(scope.copy())
+    def walk_ast(self, scope, builder):
+        super().walk_ast(scope.copy(), builder)
         self._set_type()
     def items(self):
         return super().items() + [('type', self.type)]
@@ -104,24 +119,36 @@ class Decl(Node):
         self.noalias = noalias
         self.ref = ref
         self.type = type
+    @property
+    def ir_type(self):
+        if not self.ref: return super().ir_type
+        else: return super().ir_type.as_pointer()
     def items(self):
         return super().items() + [('type', 'noalias '*self.noalias +\
                                    'ref '*self.ref + self.type)]
 
 class Callable(Node):
-    def __init__(self, lineno, ret_type, globid, decls):
+    def __init__(self, lineno, ret_type, globid, decls, var_arg=False):
         super().__init__(lineno)
         self.ret_type = ret_type
         self.globid = globid
         self.decls = decls
-    def walk_ast(self, scope):
+        self.var_arg = var_arg
+    def walk_ast(self, scope, builder):
         try:
             scope.add_callable(self)
         except ScopeException:
             Exit.REDECLARED_NAME_ERROR(self.lineno, self.globid)
+        self.type = self.ret_type
         if self.decls:
-            self.decls.walk_ast(scope.copy())
-        super().walk_ast(scope.copy())
+            self.func_type = ir.FunctionType(self.ir_type, [decl.ir_type for decl in self.decls], var_arg=self.var_arg)
+        else:
+            self.func_type = ir.FunctionType(self.ir_type, [], var_arg=self.var_arg)
+        self.ptr = ir.Function(builder, self.func_type, name=self.globid)
+        scope.add_ptr(self.globid, self.ptr)
+        if self.decls:
+            self.decls.walk_ast(scope.copy(), builder)
+        super().walk_ast(scope.copy(), builder)
     def items(self):
         return super().items() + [('ret_type', self.ret_type),
                                   ('globid', self.globid),
@@ -138,11 +165,11 @@ class Nodelist(Node):
         return len(self.nodelist)
     def __iter__(self):
         return iter(self.nodelist)
-    def walk_ast(self, scope):
+    def walk_ast(self, scope, builder):
         for node in self:
-            node.walk_ast(scope.copy())
+            node.walk_ast(scope.copy(), builder)
             scope = node.scope
-        super().walk_ast(scope.copy())
+        super().walk_ast(scope.copy(), builder)
     def items(self):
         return super().items() + [(self.listname, self.nodelist)]
 
@@ -153,9 +180,13 @@ class Prog(Node):
         super().__init__(lineno)
         self.externs = externs
         self.funcs = funcs
-    def walk_ast(self, scope=None):
+    def walk_ast(self, scope=None, builder='main'):
         if not scope:
             scope = Scope()
+        self.module = ir.Module(name=builder)
+        scope.module = self.module
+        printf = Extern(lineno=-1, ret_type='int', globid='printf',
+                        decls=Tdecls(lineno=-1, node=Tdecl(lineno=-1, noalias=False, ref=False, type='char*')), var_arg=True)
         arg = Extern(lineno=-1, ret_type='int', globid='arg',
                      decls=Tdecls(lineno=-1, node=Tdecl(lineno=-1, noalias=False, ref=False, type='int')))
         argf = Extern(lineno=-1, ret_type='float', globid='argf',
@@ -165,18 +196,19 @@ class Prog(Node):
         else:
             self.externs = Externs(lineno=-1, node=argf)
         self.externs = self.externs + arg
-        self.externs.walk_ast(scope.copy())
+        self.externs = self.externs + printf
+        self.externs.walk_ast(scope.copy(), self.module)
         scope = self.externs.scope
         if 'run' in scope:
             Exit.RUN_FUNCTION_MISSING()
-        self.funcs.walk_ast(scope.copy())
+        self.funcs.walk_ast(scope.copy(), self.module)
         scope = self.funcs.scope
         try:
             if scope('run', None) != 'int':
                 raise ScopeException
         except ScopeException:
             Exit.RUN_FUNCTION_MISSING()
-        super().walk_ast(scope.copy())
+        super().walk_ast(scope.copy(), builder)
     def items(self):
         return super().items() + [('externs', self.externs),
                                   ('funcs', self.funcs)]
@@ -197,13 +229,23 @@ class Func(Callable):
     def __init__(self, lineno, ret_type, globid, decls, blk):
         super().__init__(lineno, ret_type, globid, decls)
         self.blk = blk
-    def walk_ast(self, scope):
-        super().walk_ast(scope.copy())
+    def walk_ast(self, scope, builder):
+        super().walk_ast(scope.copy(), builder)
+        self.entry_block = self.ptr.append_basic_block()
+        self.block_builder = ir.IRBuilder(self.entry_block)
         if self.decls:
             blk_scope = self.decls.scope
+            for vdecl, arg in zip(self.decls, self.ptr.args):
+                vdecl.scope = blk_scope
+                vdecl.builder = self.block_builder
+                vdecl.set_exp(arg)
         else:
             blk_scope = self.scope
-        self.blk.walk_ast(blk_scope.copy())
+        self.blk.walk_ast(blk_scope.copy(), self.block_builder)
+        if self.ret_type in ['void']:
+            self.block_builder.ret_void()
+        else:
+            self.block_builder.ret(self.ir_type(0))
     def items(self):
         return super().items() + [('blk', self.blk)]
 
@@ -212,9 +254,9 @@ class Blk(Stmt):
     def __init__(self, lineno, contents):
         super().__init__(lineno)
         self.contents = contents
-    def walk_ast(self, scope):
-        self.contents.walk_ast(scope.copy())
-        super().walk_ast(scope.copy())
+    def walk_ast(self, scope, builder):
+        self.contents.walk_ast(scope.copy(), builder)
+        super().walk_ast(scope.copy(), builder)
     def items(self):
         return super().items() + [('contents', self.contents)]
 
@@ -227,10 +269,16 @@ class Ret(Stmt):
     def __init__(self, lineno, exp):
         super().__init__(lineno)
         self.exp = exp
-    def walk_ast(self, scope):
+    def walk_ast(self, scope, builder):
         if self.exp:
-            self.exp.walk_ast(scope.copy())
-        super().walk_ast(scope.copy())
+            self.exp.walk_ast(scope.copy(), builder)
+        super().walk_ast(scope.copy(), builder)
+        if self.exp:
+            builder.ret(self.exp.ir)
+        else:
+            builder.ret_void()
+        self.block = builder.append_basic_block()
+        builder.position_at_start(self.block)
     def items(self):
         return super().items() + [('exp', self.exp)]
 
@@ -240,13 +288,14 @@ class Vardeclstmt(Stmt):
         super().__init__(lineno)
         self.vdecl = vdecl
         self.exp = exp
-    def walk_ast(self, scope):
-        self.exp.walk_ast(scope.copy())
-        self.vdecl.walk_ast(scope.copy())
-        scope = self.vdecl.scope
+    def walk_ast(self, scope, builder):
+        self.exp.walk_ast(scope.copy(), builder)
+        self.vdecl.walk_ast(scope.copy(), builder)
         if (self.vdecl.ref and not isinstance(self.exp, Varval)) or self.vdecl.type != self.exp.type:
             Exit.INVALID_VAR_TYPE_ERROR(self.lineno, self.vdecl.var)
-        super().walk_ast(scope.copy())
+        self.vdecl.set_exp(self.exp)
+        scope = self.vdecl.scope
+        super().walk_ast(scope.copy(), builder)
     def items(self):
         return super().items() + [('vdecl', self.vdecl),
                                   ('exp', self.exp)]
@@ -256,9 +305,9 @@ class Expstmt(Stmt):
     def __init__(self, lineno, exp):
         super().__init__(lineno)
         self.exp = exp
-    def walk_ast(self, scope):
-        self.exp.walk_ast(scope.copy())
-        super().walk_ast(scope.copy())
+    def walk_ast(self, scope, builder):
+        self.exp.walk_ast(scope.copy(), builder)
+        super().walk_ast(scope.copy(), builder)
     def items(self):
         return super().items() + [('exp', self.exp)]
 
@@ -268,12 +317,21 @@ class While(Stmt):
         super().__init__(lineno)
         self.cond = cond
         self.stmt = stmt
-    def walk_ast(self, scope):
-        self.cond.walk_ast(scope.copy())
-        self.stmt.walk_ast(scope.copy())
-        super().walk_ast(scope.copy())
-        if self.cond.type not in ['bool']:
-            Exit.INVALID_OPERATION_TYPE(self.lineno, self.name)
+    def walk_ast(self, scope, builder):
+        self.cond_block = builder.append_basic_block()
+        self.loop_block = builder.append_basic_block()
+        self.endloop_block = builder.append_basic_block()
+        builder.branch(self.cond_block)
+        with builder.goto_block(self.cond_block):
+            self.cond.walk_ast(scope.copy(), builder)
+            if self.cond.type not in ['bool']:
+                Exit.INVALID_OPERATION_TYPE(self.lineno, self.name)
+            builder.cbranch(self.cond.ir, self.loop_block, self.endloop_block)
+        with builder.goto_block(self.loop_block):
+            self.stmt.walk_ast(scope.copy(), builder)
+            builder.branch(self.cond_block)
+        super().walk_ast(scope.copy(), builder)
+        builder.position_at_start(self.endloop_block)
     def items(self):
         return super().items() + [('cond', self.cond),
                                   ('stmt', self.stmt)]
@@ -285,13 +343,20 @@ class If(Stmt):
         self.cond = cond
         self.stmt = stmt
         self.else_stmt = else_stmt
-    def walk_ast(self, scope):
-        self.cond.walk_ast(scope.copy())
-        self.stmt.walk_ast(scope.copy())
-        if self.else_stmt: self.else_stmt.walk_ast(scope.copy())
-        super().walk_ast(scope.copy())
+    def walk_ast(self, scope, builder):
+        self.cond.walk_ast(scope.copy(), builder)
         if self.cond.type not in ['bool']:
             Exit.INVALID_OPERATION_TYPE(self.lineno, self.name)
+        if self.else_stmt:
+            with builder.if_else(self.cond.ir) as (if_block, else_block):
+                with if_block:
+                    self.stmt.walk_ast(scope.copy(), builder)
+                with else_block:
+                    self.else_stmt.walk_ast(scope.copy(), builder)
+        else:
+            with builder.if_then(self.cond.ir):
+                self.stmt.walk_ast(scope.copy(), builder)
+        super().walk_ast(scope.copy(), builder)
     def items(self):
         return super().items() + [('cond', self.cond),
                                   ('stmt', self.stmt),
@@ -302,9 +367,11 @@ class Print(Stmt):
     def __init__(self, lineno, exp):
         super().__init__(lineno)
         self.exp = exp
-    def walk_ast(self, scope):
-        self.exp.walk_ast(scope.copy())
-        super().walk_ast(scope.copy())
+    def walk_ast(self, scope, builder):
+        self.exp.walk_ast(scope.copy(), builder)
+        super().walk_ast(scope.copy(), builder)
+        printf = self.scope.get_ptr('printf')
+
     def items(self):
         return super().items() + [('exp', self.exp)]
 
@@ -312,7 +379,19 @@ class Printslit(Stmt):
     name = 'printslit'
     def __init__(self, lineno, string):
         super().__init__(lineno)
-        self.string = string
+        self.string = string + '\n\0'
+    def walk_ast(self, scope, builder):
+        super().walk_ast(scope.copy(), builder)
+        self.type = 'char'
+        self.string_ir_type = ir.ArrayType(self.ir_type, len(self.string))
+        self.string_constant = ir.Constant(self.string_ir_type, bytearray(self.string.encode()))
+        self.global_str = ir.GlobalVariable(self.scope.module, self.string_ir_type, 'string'+str(id(self)))
+        self.global_str.linkage = 'internal'
+        self.global_str.initializer = self.string_constant
+        self.type = 'char*'
+        printf = self.scope.get_ptr('printf')
+        printf_arg = builder.bitcast(self.global_str, self.ir_type)
+        builder.call(printf, [printf_arg])
     def items(self):
         return super().items() + [('string', self.string)]
 
@@ -331,10 +410,11 @@ class Funccall(Exp):
             self.type = self.scope(self.globid, self.params)
         except ScopeException:
             Exit.UNDECLARED_USAGE_ERROR(self.lineno, self.globid)
-    def walk_ast(self, scope):
+    def walk_ast(self, scope, builder):
         if self.params:
-            self.params.walk_ast(scope.copy())
-        super().walk_ast(scope.copy())
+            self.params.walk_ast(scope.copy(), builder)
+        super().walk_ast(scope.copy(), builder)
+        self.ir = builder.call(self.scope.get_ptr(self.globid), self.scope.get_args(self.globid, self.params))
     def items(self):
         return super().items() + [('globid', self.globid),
                                   ('params', self.params)]
@@ -352,9 +432,11 @@ class Assign(Exp):
             Exit.UNDECLARED_USAGE_ERROR(self.lineno, self.var)
         if self.type != self.exp.type:
             Exit.IMPLICIT_TYPE_CAST_ERROR(self.lineno, self.exp.type, self.type)
-    def walk_ast(self, scope):
-        self.exp.walk_ast(scope.copy())
-        super().walk_ast(scope.copy())
+    def walk_ast(self, scope, builder):
+        self.exp.walk_ast(scope.copy(), builder)
+        super().walk_ast(scope.copy(), builder)
+        builder.store(self.exp.ir, self.scope.get_ptr(self.var))
+        self.ir = self.exp.ir
     def items(self):
         return super().items() + [('var', self.var),
                                   ('exp', self.exp)]
@@ -374,9 +456,16 @@ class Caststmt(Exp):
         }
         if self.type not in cast_type[self.exp.type]:
             Exit.TYPE_CAST_ERROR(self.lineno, self.type, self.exp.type)
-    def walk_ast(self, scope):
-        self.exp.walk_ast(scope.copy())
-        super().walk_ast(scope.copy())
+    def walk_ast(self, scope, builder):
+        self.exp.walk_ast(scope.copy(), builder)
+        super().walk_ast(scope.copy(), builder)
+        if self.type == self.exp.type:
+            self.ir = self.exp.ir
+        else:
+            if self.type in ['int', 'cint']:
+                self.ir = builder.fptosi(self.exp.ir, self.ir_type)
+            elif self.type in ['float']:
+                self.ir = builder.sitofp(self.exp.ir, self.ir_type)
     def items(self):
         return super().items() + [('exp', self.exp)]
 
@@ -408,10 +497,42 @@ class Binop(Exp):
                 Exit.INVALID_OPERATION_TYPE(self.lineno, self.op)
         else:
             Exit.IMPLICIT_TYPE_CAST_ERROR(self.lineno, self.lhs.type, self.rhs.type)
-    def walk_ast(self, scope):
-        self.lhs.walk_ast(scope.copy())
-        self.rhs.walk_ast(scope.copy())
-        super().walk_ast(scope.copy())
+    def walk_ast(self, scope, builder):
+        self.lhs.walk_ast(scope.copy(), builder)
+        self.rhs.walk_ast(scope.copy(), builder)
+        super().walk_ast(scope.copy(), builder)
+        if self.op in ['*']:
+            if self.type in ['int', 'cint']:
+                self.overflow_ir = builder.smul_with_overflow(self.lhs.ir, self.rhs.ir)
+                self.ir = builder.extract_value(self.overflow_ir, 0)
+            elif self.type in ['float']:
+                self.ir = builder.fmul(self.lhs.ir, self.rhs.ir)
+        elif self.op in ['/']:
+            if self.type in ['int', 'cint']:
+                self.ir = builder.sdiv(self.lhs.ir, self.rhs.ir)
+            elif self.type in ['float']:
+                self.ir = builder.fdiv(self.lhs.ir, self.rhs.ir)
+        elif self.op in ['+']:
+            if self.type in ['int', 'cint']:
+                self.overflow_ir = builder.sadd_with_overflow(self.lhs.ir, self.rhs.ir)
+                self.ir = builder.extract_value(self.overflow_ir, 0)
+            elif self.type in ['float']:
+                self.ir = builder.fadd(self.lhs.ir, self.rhs.ir)
+        elif self.op in ['-']:
+            if self.type in ['int', 'cint']:
+                self.overflow_ir = builder.ssub_with_overflow(self.lhs.ir, self.rhs.ir)
+                self.ir = builder.extract_value(self.overflow_ir, 0)
+            elif self.type in ['float']:
+                self.ir = builder.fsub(self.lhs.ir, self.rhs.ir)
+        elif self.op in ['==', '<', '>']:
+            if self.lhs.type in ['int', 'cint']:
+                self.ir = builder.icmp_signed(self.op, self.lhs.ir, self.rhs.ir)
+            elif self.lhs.type in ['float']:
+                self.ir = builder.fcmp_ordered(self.op, self.lhs.ir, self.rhs.ir)
+        elif self.op in ['&&']:
+            self.ir = builder.and_(self.lhs.ir, self.rhs.ir)
+        elif self.op in ['||']:
+            self.ir = builder.or_(self.lhs.ir, self.rhs.ir)
     def items(self):
         return super().items() + [('op', self.op),
                                   ('lhs', self.lhs),
@@ -434,9 +555,13 @@ class Uop(Exp):
             self.type = self.exp.type
         except TypeError:
             Exit.INVALID_OPERATION_TYPE(self.lineno, self.op)
-    def walk_ast(self, scope):
-        self.exp.walk_ast(scope.copy())
-        super().walk_ast(scope.copy())
+    def walk_ast(self, scope, builder):
+        self.exp.walk_ast(scope.copy(), builder)
+        super().walk_ast(scope.copy(), builder)
+        if self.op in ['-']:
+            self.ir = builder.neg(self.exp.ir)
+        elif self.op in ['!']:
+            self.ir = builder.not_(self.exp.ir)
     def items(self):
         return super().items() + [('op', self.op),
                                   ('exp', self.exp)]
@@ -445,6 +570,9 @@ class Litnode(Exp):
     def __init__(self, lineno, value):
         super().__init__(lineno)
         self.value = value
+    def walk_ast(self, scope, builder):
+        super().walk_ast(scope.copy(), builder)
+        self.ir = ir.Constant(self.ir_type, self.value)
     def items(self):
         return super().items() + [('value', self.value)]
 
@@ -473,6 +601,10 @@ class Varval(Exp):
             self.type = self.scope[self.var]
         except ScopeException:
             Exit.UNDECLARED_USAGE_ERROR(self.lineno, self.var)
+    def walk_ast(self, scope, builder):
+        super().walk_ast(scope.copy(), builder)
+        self.ptr = self.scope.get_ptr(self.var)
+        self.ir = builder.load(self.ptr)
     def items(self):
         return super().items() + [('var', self.var)]
 
@@ -489,12 +621,26 @@ class Vdecl(Decl):
     def __init__(self, lineno, noalias, ref, type, var):
         super().__init__(lineno, noalias, ref, type)
         self.var = var
-    def walk_ast(self, scope):
+    def walk_ast(self, scope, builder):
         try:
             scope.add_variable(self)
         except ScopeException:
             Exit.REDECLARED_NAME_ERROR(self.lineno, self.var)
-        super().walk_ast(scope.copy())
+        super().walk_ast(scope.copy(), builder)
+    def set_exp(self, exp):
+        if isinstance(exp, ir.Argument):
+            if self.ref:
+                self.ptr = exp
+            else:
+                self.ptr = self.builder.alloca(self.ir_type, name=self.var)
+                self.builder.store(exp, self.ptr)
+        else:
+            if self.ref:
+                self.ptr = self.scope.get_ptr(exp.var)
+            else:
+                self.ptr = self.builder.alloca(self.ir_type, name=self.var)
+                self.builder.store(exp.ir, self.ptr)
+        self.scope.add_ptr(self.var, self.ptr)
     def items(self):
         return super().items() + [('var', self.var)]
 
@@ -503,11 +649,13 @@ class Tdecl(Decl):
 
 
 class Scope:
-    def __init__(self, callables=None, variables=None):
+    def __init__(self, callables=None, variables=None, pointers=None):
         if callables: self.callables = callables.copy()
         else: self.callables = {}
         if variables: self.variables = variables.copy()
         else: self.variables = {}
+        if pointers: self.pointers = pointers.copy()
+        else: self.pointers = {}
     def __contains__(self, value):
         return value in self.callables or value in self.variables
     def __call__(self, name, args):
@@ -536,7 +684,16 @@ class Scope:
             raise ScopeException
         self.variables[variable.var] = variable
     def copy(self):
-        return self.__class__(callables=self.callables, variables=self.variables)
+        new_scope = self.__class__(callables=self.callables, variables=self.variables, pointers=self.pointers)
+        new_scope.module = self.module
+        return new_scope
+    def add_ptr(self, name, ptr): self.pointers[name] = ptr
+    def get_ptr(self, name): return self.pointers[name]
+    def get_args(self, name, args):
+        call = self.callables[name]
+        if args is None: return []
+        return [arg.ptr if decl.ref else arg.ir for decl, arg in zip(call.decls, args)]
+
 
 
 
@@ -894,7 +1051,7 @@ def main(input_args=None):
     with open(args.input) as input_file:
         ast = yacc_parser.parse(input_file.read())
 
-    ast.walk_ast()
+    ast.walk_ast(builder=os.path.basename(args.input))
 
     if args.emit_ast:
         yaml.representer.Representer.add_multi_representer(Node, yaml.representer.Representer.represent_dict)
@@ -904,10 +1061,53 @@ def main(input_args=None):
         else:
             print(yaml.dump(ast, indent=2, sort_keys=False, explicit_start=True, explicit_end=True))
     elif args.emit_llvm:
-        Exit.NOT_IMPLEMENTED('Not Implemented LLVM IR Dump')
+        if args.o:
+            with open(args.o, 'w') as ast_output_file:
+                print(ast.module, file=ast_output_file)
+        else:
+            print(ast.module)
 
-    Exit.NOT_IMPLEMENTED('Not Implemented Compiling after AST Generation')
+    #llvm_exec(ast)
 
+def llvm_exec(ast):
+    llvm.initialize()
+    llvm.initialize_native_target()
+    llvm.initialize_native_asmprinter()
+    llvm_ir = str(ast.module)
+    def create_execution_engine():
+        """
+        Create an ExecutionEngine suitable for JIT code generation on
+        the host CPU.  The engine is reusable for an arbitrary number of
+        modules.
+        """
+        # Create a target machine representing the host
+        target = llvm.Target.from_default_triple()
+        target_machine = target.create_target_machine()
+        # And an execution engine with an empty backing module
+        backing_mod = llvm.parse_assembly("")
+        engine = llvm.create_mcjit_compiler(backing_mod, target_machine)
+        return engine
+    def compile_ir(engine, llvm_ir):
+        """
+        Compile the LLVM IR string with the given engine.
+        The compiled module object is returned.
+        """
+        # Create a LLVM module object from the IR
+        mod = llvm.parse_assembly(llvm_ir)
+        mod.verify()
+        # Now add the module and make sure it is ready for execution
+        engine.add_module(mod)
+        engine.finalize_object()
+        engine.run_static_constructors()
+        return mod
+
+    engine = create_execution_engine()
+    mod = compile_ir(engine, llvm_ir)
+    func_ptr = engine.get_function_address('run')
+    from ctypes import CFUNCTYPE, c_int32
+    cfunc = CFUNCTYPE(c_int32)(func_ptr)
+    res = cfunc()
+    print('res:',res)
 
 
 if __name__=='__main__':
