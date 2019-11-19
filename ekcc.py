@@ -95,6 +95,7 @@ class Node(ABC):
                 'int': ir.IntType(32),
                 'cint': ir.IntType(32),
                 'float': ir.FloatType(),
+                'double': ir.DoubleType(),
                 'bool': ir.IntType(1)}[self.type]
     @abstractmethod
     def items(self):
@@ -370,8 +371,25 @@ class Print(Stmt):
     def walk_ast(self, scope, builder):
         self.exp.walk_ast(scope.copy(), builder)
         super().walk_ast(scope.copy(), builder)
+        if self.exp.type in ['int', 'cint', 'bool']: fmt = '%i\n\0'
+        elif self.exp.type in ['float']: fmt = '%f\n\0'
+        self.type = 'char'
+        fmt_ir_type = ir.ArrayType(self.ir_type, len(fmt))
+        fmt_constant = ir.Constant(fmt_ir_type, bytearray(fmt.encode()))
+        global_str = ir.GlobalVariable(self.scope.module, fmt_ir_type, 'string'+str(id(self)))
+        global_str.initializer = fmt_constant
+        self.type = 'char*'
+        fmt_arg = builder.bitcast(global_str, self.ir_type)
+        if self.exp.type in ['int', 'cint']:
+            self.exp_ir = self.exp.ir
+        elif self.exp.type in ['float']:
+            self.type = 'double'
+            self.exp_ir = builder.fpext(self.exp.ir, self.ir_type)
+        elif self.exp.type in ['bool']:
+            self.type = 'bool'
+            self.exp_ir = builder.zext(self.exp.ir, self.ir_type)
         printf = self.scope.get_ptr('printf')
-
+        builder.call(printf, [fmt_arg, self.exp_ir])
     def items(self):
         return super().items() + [('exp', self.exp)]
 
@@ -386,7 +404,6 @@ class Printslit(Stmt):
         self.string_ir_type = ir.ArrayType(self.ir_type, len(self.string))
         self.string_constant = ir.Constant(self.string_ir_type, bytearray(self.string.encode()))
         self.global_str = ir.GlobalVariable(self.scope.module, self.string_ir_type, 'string'+str(id(self)))
-        self.global_str.linkage = 'internal'
         self.global_str.initializer = self.string_constant
         self.type = 'char*'
         printf = self.scope.get_ptr('printf')
