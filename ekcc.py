@@ -94,6 +94,7 @@ class Node(ABC):
         self._set_ir_builder(builder)
     @property
     def ir_type(self):
+        '''self.ir_type -> IR Type based on self.type'''
         return {'void': ir.VoidType(),
                 'char': ir.IntType(8),
                 'char*': ir.IntType(8).as_pointer(),
@@ -225,12 +226,18 @@ class Prog(Node):
             global_argv_constant = ir.Constant(self.ir_type, None)
             global_argv = ir.GlobalVariable(scope.module, self.ir_type, 'global_argv')
             global_argv.initializer = global_argv_constant
+            self.type = 'int'
+            global_argc_constant = ir.Constant(self.ir_type, None)
+            global_argc = ir.GlobalVariable(scope.module, self.ir_type, 'global_argc')
+            global_argc.initializer = global_argc_constant
+            self.type = 'char**'
             main_func_type = ir.FunctionType(ir.IntType(32), [ir.IntType(32), self.ir_type])
             main_func = ir.Function(scope.module, main_func_type, name='main')
             argc, argv = main_func.args
             main_block = main_func.append_basic_block()
             main_builder = ir.IRBuilder(main_block)
             main_builder.store(argv, global_argv)
+            main_builder.store(argc, global_argc)
             run_ret = main_builder.call(scope.get_ptr('run'), [])
             main_builder.ret(run_ret)
             self.type = 'char*'
@@ -238,7 +245,7 @@ class Prog(Node):
             atoi = ir.Function(scope.module, atoi_type, name='atoi')
             atof_type = ir.FunctionType(ir.DoubleType(), [self.ir_type])
             atof = ir.Function(scope.module, atof_type, name='atof')
-            for name, type_str in zip(['arg', 'argf'], ['int', 'float']):
+            for name, type, type_str in zip(['arg', 'argf'], [int, float], ['int', 'float']):
                 try:
                     func = scope.get_ptr(name)
                 except:
@@ -252,17 +259,22 @@ class Prog(Node):
                 entry_block = func.append_basic_block()
                 func_builder = ir.IRBuilder(entry_block)
                 argv = func_builder.load(global_argv)
+                argc = func_builder.load(global_argc)
                 index = func_builder.add(arg, ir.Constant(ir.IntType(32), 1))
-                argv_index = func_builder.gep(argv, [index])
-                argv_n_str = func_builder.load(argv_index)
-                if type_str in ['int']:
-                    atoival = func_builder.call(atoi, [argv_n_str])
-                    func_builder.ret(atoival)
-                elif type_str in ['float']:
-                    atofval = func_builder.call(atof, [argv_n_str])
-                    self.type = 'float'
-                    fval = func_builder.fptrunc(atofval, self.ir_type)
-                    func_builder.ret(fval)
+                argc_check = func_builder.icmp_signed('<', index, argc)
+                with func_builder.if_then(argc_check):
+                    argv_index = func_builder.gep(argv, [index])
+                    argv_n_str = func_builder.load(argv_index)
+                    if type_str in ['int']:
+                        atoival = func_builder.call(atoi, [argv_n_str])
+                        func_builder.ret(atoival)
+                    elif type_str in ['float']:
+                        atofval = func_builder.call(atof, [argv_n_str])
+                        self.type = 'float'
+                        fval = func_builder.fptrunc(atofval, self.ir_type)
+                        func_builder.ret(fval)
+                self.type = type_str
+                func_builder.ret(self.ir_type(type(0)))
         else:
             for name, type, type_str in zip(['arg', 'argf'], [int, float], ['int', 'float']):
                 try:
