@@ -346,7 +346,7 @@ class Blk(Stmt):
         super().__init__(lineno)
         self.contents = contents
     def walk_ast(self, scope, builder):
-        self.contents.walk_ast(scope.copy(), builder)
+        if self.contents: self.contents.walk_ast(scope.copy(), builder)
         super().walk_ast(scope.copy(), builder)
     def items(self):
         return super().items() + [('contents', self.contents)]
@@ -957,8 +957,12 @@ def p_func(p):
         p[0] = Func(lineno=p.lexer.lineno, ret_type=p[2], globid=p[3], decls=None, blk=p[6])
 
 def p_blk(p):
-    'blk : LBRACE stmts RBRACE'
-    p[0] = Blk(lineno=p.lexer.lineno, contents=p[2])
+    '''blk : LBRACE stmts RBRACE
+           | LBRACE RBRACE'''
+    if len(p) == 4:
+        p[0] = Blk(lineno=p.lexer.lineno, contents=p[2])
+    else:
+        p[0] = Blk(lineno=p.lexer.lineno, contents=None)
 
 def p_stmts(p):
     '''stmts : stmt stmts
