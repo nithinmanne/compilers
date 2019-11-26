@@ -1170,20 +1170,6 @@ def main(input_args=None):
     if args.jit: ast.walk_ast(builder=os.path.basename(args.input), jit=args.args)
     else: ast.walk_ast(builder=os.path.basename(args.input), jit=None)
 
-    if args.emit_ast:
-        yaml.representer.Representer.add_multi_representer(Node, yaml.representer.Representer.represent_dict)
-        if args.o:
-            with open(args.o, 'w') as ast_output_file:
-                yaml.dump(ast, ast_output_file, indent=2, sort_keys=False, explicit_start=True, explicit_end=True)
-        else:
-            print(yaml.dump(ast, indent=2, sort_keys=False, explicit_start=True, explicit_end=True))
-    elif args.emit_llvm:
-        if args.o:
-            with open(args.o, 'w') as ast_output_file:
-                print(ast.module, file=ast_output_file)
-        else:
-            print(ast.module)
-
     llvm.initialize()
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()
@@ -1200,6 +1186,35 @@ def main(input_args=None):
     # Create a LLVM module object from the IR
     mod = llvm.parse_assembly(llvm_ir)
     mod.verify()
+
+
+    #add optimization pipeline
+    if args.O:
+        pmb = llvm.create_pass_manager_builder()
+        pmb.opt_level = 3
+
+        fpm = llvm.create_function_pass_manager(mod)
+        pmb.populate(fpm)
+
+        pm = llvm.create_module_pass_manager()
+        pmb.populate(pm)
+
+        pm.run(mod)
+
+    if args.emit_ast:
+        yaml.representer.Representer.add_multi_representer(Node, yaml.representer.Representer.represent_dict)
+        if args.o:
+            with open(args.o, 'w') as ast_output_file:
+                yaml.dump(ast, ast_output_file, indent=2, sort_keys=False, explicit_start=True, explicit_end=True)
+        else:
+            print(yaml.dump(ast, indent=2, sort_keys=False, explicit_start=True, explicit_end=True))
+    elif args.emit_llvm:
+        if args.o:
+            with open(args.o, 'w') as ast_output_file:
+                print(ast.module, file=ast_output_file)
+        else:
+            print(mod)
+
     # Now add the module and make sure it is ready for execution
     engine.add_module(mod)
     engine.finalize_object()
