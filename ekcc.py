@@ -202,10 +202,13 @@ class Prog(Node):
                         decls=Tdecls(lineno=-1, node=Tdecl(lineno=-1, noalias=False,
                                                            ref=False, type='char*')),
                         var_arg=True)
+        exit = Extern(lineno=-1, ret_type='void', globid='exit',
+                      decls=Tdecls(lineno=-1, node=Tdecl(lineno=-1, noalias=False,
+                                                         ref=False, type='int')))
         if self.externs:
-            self.externs = self.externs + printf
+            self.externs = self.externs + printf + exit
         else:
-            self.externs = Externs(lineno=-1, node=argf) + printf
+            self.externs = Externs(lineno=-1, node=printf) + exit
         self.externs.walk_ast(scope.copy(), self.module)
         scope = self.externs.scope
         if 'run' in scope:
@@ -576,7 +579,24 @@ class Caststmt(Exp):
     def items(self):
         return super().items() + [('exp', self.exp)]
 
-class Binop(Exp):
+class OverflowExp(Exp):
+    def overflow_error(self, builder):
+        old_type = self.type
+        err_string = 'Overflow using operator "{}" in line {}\n\0'.format(self.op, self.lineno)
+        self.type = 'char'
+        fmt_ir_type = ir.ArrayType(self.ir_type, len(err_string))
+        fmt_constant = ir.Constant(fmt_ir_type, bytearray(err_string.encode()))
+        global_str = ir.GlobalVariable(self.scope.module, fmt_ir_type, self.scope.module.get_unique_name('string'))
+        global_str.initializer = fmt_constant
+        self.type = 'char*'
+        fmt_arg = builder.bitcast(global_str, self.ir_type)
+        printf = self.scope.get_ptr('printf')
+        builder.call(printf, [fmt_arg])
+        self.type = old_type
+        exit = self.scope.get_ptr('exit')
+        builder.call(exit, [ir.Constant(ir.IntType(32), 1)])
+
+class Binop(OverflowExp):
     name = 'binop'
     def __init__(self, lineno, op, lhs, rhs):
         super().__init__(lineno)
@@ -611,23 +631,39 @@ class Binop(Exp):
         if self.op in ['*']:
             if self.type in ['int', 'cint']:
                 self.overflow_ir = builder.smul_with_overflow(self.lhs.ir, self.rhs.ir)
+                if self.type in ['cint']:
+                    self.overflow = builder.extract_value(self.overflow_ir, 1)
+                    with builder.if_then(self.overflow):
+                        self.overflow_error(builder)
                 self.ir = builder.extract_value(self.overflow_ir, 0)
             elif self.type in ['float']:
                 self.ir = builder.fmul(self.lhs.ir, self.rhs.ir)
         elif self.op in ['/']:
             if self.type in ['int', 'cint']:
                 self.ir = builder.sdiv(self.lhs.ir, self.rhs.ir)
+                if self.type in ['cint']:
+                    self.overflow = builder.icmp_signed('==', self.lhs.ir, self.ir)
+                    with builder.if_then(self.overflow):
+                        self.overflow_error(builder)
             elif self.type in ['float']:
                 self.ir = builder.fdiv(self.lhs.ir, self.rhs.ir)
         elif self.op in ['+']:
             if self.type in ['int', 'cint']:
                 self.overflow_ir = builder.sadd_with_overflow(self.lhs.ir, self.rhs.ir)
+                if self.type in ['cint']:
+                    self.overflow = builder.extract_value(self.overflow_ir, 1)
+                    with builder.if_then(self.overflow):
+                        self.overflow_error(builder)
                 self.ir = builder.extract_value(self.overflow_ir, 0)
             elif self.type in ['float']:
                 self.ir = builder.fadd(self.lhs.ir, self.rhs.ir)
         elif self.op in ['-']:
             if self.type in ['int', 'cint']:
                 self.overflow_ir = builder.ssub_with_overflow(self.lhs.ir, self.rhs.ir)
+                if self.type in ['cint']:
+                    self.overflow = builder.extract_value(self.overflow_ir, 1)
+                    with builder.if_then(self.overflow):
+                        self.overflow_error(builder)
                 self.ir = builder.extract_value(self.overflow_ir, 0)
             elif self.type in ['float']:
                 self.ir = builder.fsub(self.lhs.ir, self.rhs.ir)
@@ -645,7 +681,7 @@ class Binop(Exp):
                                   ('lhs', self.lhs),
                                   ('rhs', self.rhs)]
 
-class Uop(Exp):
+class Uop(OverflowExp):
     name = 'uop'
     def __init__(self, lineno, op, exp):
         super().__init__(lineno)
@@ -667,6 +703,10 @@ class Uop(Exp):
         super().walk_ast(scope.copy(), builder)
         if self.op in ['-']:
             self.ir = builder.neg(self.exp.ir)
+            if self.type in ['cint']:
+                self.overflow = builder.icmp_signed('==', self.exp.ir, self.ir)
+                with builder.if_then(self.overflow):
+                    self.overflow_error(builder)
         elif self.op in ['!']:
             self.ir = builder.not_(self.exp.ir)
     def items(self):
