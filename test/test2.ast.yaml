@@ -4,6 +4,14 @@ externs:
   name: externs
   externs:
   - name: extern
+    ret_type: void
+    globid: exit
+    decls:
+      name: tdecls
+      tdecls:
+      - name: tdecl
+        type: int
+  - name: extern
     ret_type: int
     globid: printf
     decls:
