@@ -25,6 +25,7 @@ optional arguments:
 1.  [Python 3](https://www.python.org/) (version >= 3.5)
 2.  [PLY](https://www.dabeaz.com/ply/) used for Lexing/Parsing (version >= 3.11)
 3.  [PyYAML](https://github.com/yaml/pyyaml/) used for generation YAML output (version >= 5.1.2)
+4.  [llvmlite](https://github.com/numba/llvmlite) used to interface with LLVM (version == 0.29.0)
 
 Use requirements.txt to install all dependencies
 ```
