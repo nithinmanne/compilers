@@ -642,7 +642,9 @@ class Binop(OverflowExp):
             if self.type in ['int', 'cint']:
                 self.ir = builder.sdiv(self.lhs.ir, self.rhs.ir)
                 if self.type in ['cint']:
-                    self.overflow = builder.icmp_signed('==', self.lhs.ir, self.ir)
+                    overflow1 = builder.icmp_signed('!=', self.lhs.ir, ir.Constant(ir.IntType(32), 0))
+                    overflow2 = builder.icmp_signed('==', self.lhs.ir, self.ir)
+                    self.overflow = builder.and_(overflow1, overflow2)
                     with builder.if_then(self.overflow):
                         self.overflow_error(builder)
             elif self.type in ['float']:
@@ -704,7 +706,9 @@ class Uop(OverflowExp):
         if self.op in ['-']:
             self.ir = builder.neg(self.exp.ir)
             if self.type in ['cint']:
-                self.overflow = builder.icmp_signed('==', self.exp.ir, self.ir)
+                overflow1 = builder.icmp_signed('!=', self.exp.ir, ir.Constant(ir.IntType(32), 0))
+                overflow2 = builder.icmp_signed('==', self.exp.ir, self.ir)
+                self.overflow = builder.and_(overflow1, overflow2)
                 with builder.if_then(self.overflow):
                     self.overflow_error(builder)
         elif self.op in ['!']:
