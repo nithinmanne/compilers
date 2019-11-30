@@ -1257,7 +1257,7 @@ def main(input_args=None):
     elif args.emit_llvm:
         if args.o:
             with open(args.o, 'w') as ast_output_file:
-                print(ast.module, file=ast_output_file)
+                print(mod, file=ast_output_file)
         else:
             print(mod)
 
@@ -1277,8 +1277,8 @@ def main(input_args=None):
             object_file = args.o + '.exe'
         else:
             object_file = args.input + '.exe'
-        proc = subprocess.Popen(['gcc', '-o', object_file, '-x', 'assembler', '-'], stdin=subprocess.PIPE)
-        proc.communicate(target_machine.emit_assembly(mod).encode())
+        proc = subprocess.Popen(['clang', '-o', object_file, '-x', 'ir', '-'], stdin=subprocess.PIPE)
+        proc.communicate(str(mod).encode())
 
 if __name__=='__main__':
     main()
