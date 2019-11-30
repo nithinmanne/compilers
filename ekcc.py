@@ -1277,7 +1277,7 @@ def main(input_args=None):
             object_file = args.o + '.exe'
         else:
             object_file = args.input + '.exe'
-        proc = subprocess.Popen(['clang', '-o', object_file, '-x', 'ir', '-'], stdin=subprocess.PIPE)
+        proc = subprocess.Popen(['clang', '-o', object_file, '-x', 'ir', '-'], stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         proc.communicate(str(mod).encode())
 
 if __name__=='__main__':
