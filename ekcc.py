@@ -10,6 +10,7 @@ import ply.lex as lex
 import ply.yacc as yacc
 from llvmlite import ir
 import llvmlite.binding as llvm
+import time
 
 # Class Definitions
 
@@ -1178,6 +1179,24 @@ def p_tdecl(p):
 def p_error(p):
     Exit.PARSING_ERROR(p)
 
+def test_populate(pm):
+    pm.add_constant_merge_pass()
+    pm.add_dead_arg_elimination_pass()
+    pm.add_function_attrs_pass()
+    pm.add_function_inlining_pass(225)
+    pm.add_global_dce_pass()
+    pm.add_global_optimizer_pass()
+    pm.add_ipsccp_pass()
+    pm.add_dead_code_elimination_pass()
+    pm.add_cfg_simplification_pass()
+    pm.add_gvn_pass()
+    pm.add_instruction_combining_pass()
+    pm.add_licm_pass()
+    pm.add_sccp_pass()
+    pm.add_sroa_pass()
+    pm.add_type_based_alias_analysis_pass()
+    pm.add_basic_alias_analysis_pass()
+
 
 yacc_parser = yacc.yacc(debug=False)
 
@@ -1236,6 +1255,7 @@ def main(input_args=None):
 
     #add optimization pipeline
     if args.O:
+        t1 = time.time()
         pmb = llvm.create_pass_manager_builder()
         pmb.opt_level = 3
 
@@ -1243,9 +1263,11 @@ def main(input_args=None):
         pmb.populate(fpm)
 
         pm = llvm.create_module_pass_manager()
-        pmb.populate(pm)
+        test_populate(pm)
 
         pm.run(mod)
+        t2 = time.time()
+        print('Running Time of Pass Pipelines', t2-t1)
 
     if args.emit_ast:
         yaml.representer.Representer.add_multi_representer(Node, yaml.representer.Representer.represent_dict)
