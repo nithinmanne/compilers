@@ -1,0 +1,18 @@
+extern int arg(int);
+
+def int add(int $x, int $y) { return $x + $y; }
+
+def int run() {
+    int $n = arg(0);
+    int $i = 0;
+    int $j = 0;
+    int $s = 0;
+    while ($i < $n) {
+        $j = 0;
+        while ($j < $n) {
+            $s = add($s, $i);
+            $j = $j + 1;
+        }
+        $i = $i + 1;
+    }
+}

@@ -1292,7 +1292,10 @@ def main(input_args=None):
         func_ptr = engine.get_function_address('run')
         from ctypes import CFUNCTYPE, c_int32
         cfunc = CFUNCTYPE(c_int32)(func_ptr)
+        t1 = time.time()
         res = cfunc()
+        t2 = time.time()
+        print('Running Time of Program', t2-t1)
         sys.exit(res)
     else:
         if args.o:
